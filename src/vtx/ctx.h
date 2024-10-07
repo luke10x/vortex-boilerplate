@@ -15,8 +15,8 @@
 // ***********
 
 // Screen dimensions
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 600;
+const int SCREEN_WIDTH = 400;
+const int SCREEN_HEIGHT = 300;
 
 // *******************************
 //  Declarations of all functions
@@ -25,7 +25,6 @@ const int SCREEN_HEIGHT = 600;
 // 1. OpenGL init subsystem
 
 static bool initVideo();
-static void initBuffers();
 
 // 2. OpenGL shader subsystem 
 namespace vtx {
@@ -103,9 +102,9 @@ bool initVideo() {
         "SDL2 OpenGL Home",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+        SCREEN_WIDTH,  // ignored in fullscreen
+        SCREEN_HEIGHT, // ignored in fullscreen
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN // | SDL_WINDOW_FULLSCREEN_DESKTOP
     );
     if (window == nullptr) {
         std::cerr << "Window could not be created! SDL Error: " << SDL_GetError() << std::endl;
@@ -186,32 +185,6 @@ bool initVideo() {
 
     return true;
 }
-
-void initBuffers() {
-    vtx::VertexContext* ctx_ = &ctx;
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f, // Bottom left
-         0.5f, -0.5f, 0.0f, // Bottom right
-         0.0f,  0.5f, 0.0f  // Top
-    };
-
-    GLuint VAO, VBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
-    // TODO only perhaps vbo setting should be here,
-    // and the rest should be moved to the user land.
-    ctx.VAO = VAO;
-    ctx.VBO = VBO;
-};
 
 // ****************************
 //  2. OpenGL shader subsystem
@@ -325,8 +298,6 @@ void vtx::openVortex() {
         exitVortex();
         exit(1);
     }
-
-    initBuffers();	
 
     init(&ctx);
 
