@@ -1,0 +1,24 @@
+{
+  "BasedOnStyle": "Google",
+  "PointerAlignment": "Left",
+  "ColumnLimit": 72,
+  "IndentWidth": 4,
+  "BinPackParameters": false,
+  "AllowAllParametersOfDeclarationOnNextLine": false,
+  "AlignAfterOpenBracket": "BlockIndent",
+  "AlignArrayOfStructures": "Left",
+  "TabWidth": 4,
+  "BreakBeforeBraces": "Custom",
+  "BraceWrapping": {
+    "AfterClass": true,
+    "AfterFunction": true
+  },
+  "AlignConsecutiveAssignments": true,
+  "AlignConsecutiveMacros": {
+    "Enabled": true,
+    "AcrossEmptyLines": true,
+    "AcrossComments": false
+  },
+  "AlignOperands": true,
+  "SpaceAfterCStyleCast": true
+}

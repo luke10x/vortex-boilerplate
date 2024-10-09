@@ -6,6 +6,8 @@ CXXFLAGS += -ferror-limit=1
 
 CXXFLAGS += -D__USE_SDL
 #CXXFLAGS += -D__USE_GLFW
+CXXFLAGS += -I./external/glm
+CXXFLAGS += -I./external/SDL/include
 
 ifeq ($(NATIVE),1)
 	CXX = clang++
@@ -33,7 +35,7 @@ endif
 
 build:
 	mkdir -p ./build
-	$(CXX) $(CXXFLAGS) ./src/example-001/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
+	$(CXX) $(CXXFLAGS) ./src/example-002/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
 		$(LDFLAGS) $(LDLIBS) -o $(OUTPUT)
 clean:
 	rm -rf ./build
