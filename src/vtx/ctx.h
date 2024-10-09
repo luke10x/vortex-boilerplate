@@ -61,9 +61,7 @@ typedef struct {
 #elif defined(__USE_GLFW)
     GLFWwindow* glfwWindow;
 #endif
-    GLuint triangleProgramId;
-    bool quit;
-    GLuint VAO, VBO;
+    int screenWidth, screenHeight;
 } VertexContext;
 
 void init(vtx::VertexContext* ctx);
@@ -179,6 +177,8 @@ bool initVideo()
     SDL_GL_GetDrawableSize(window, &width, &height);
     ctx.sdlContext = context;
     ctx.sdlWindow  = window;
+    ctx.screenWidth = width;
+    ctx.screenHeight = height;
 #elif defined(__USE_GLFW)
     glfwGetFramebufferSize(window, &width, &height);
     ctx.glfwWindow = window;

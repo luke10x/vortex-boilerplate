@@ -35,7 +35,7 @@ endif
 
 build:
 	mkdir -p ./build
-	$(CXX) $(CXXFLAGS) ./src/example-002/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
+	$(CXX) $(CXXFLAGS) ./src/example-003/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
 		$(LDFLAGS) $(LDLIBS) -o $(OUTPUT)
 clean:
 	rm -rf ./build
