@@ -107,7 +107,7 @@ typedef struct {
 UserContext usr;
 
 // Create the camera matrix
-glm::vec3 cameraPosition(2.2f, 5.2f, 2.2f);
+glm::vec3 cameraPosition(1.0f, 2.5f, 0.0f);
 glm::vec3 targetPosition(0.0f, 0.0f, 0.0f);
 glm::vec3 upDirection(0.0f, 1.0f, 0.0f);
 glm::mat4 cameraMatrix = glm::lookAt(
@@ -172,7 +172,7 @@ void vtx::init(vtx::VertexContext* ctx)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
 
-    // Figure projection matrix
+    // Set projection matrix
     float fov = glm::radians(45.0f);  // Field of view in radians
     float aspectRatio =
         ctx->screenWidth /
@@ -223,6 +223,14 @@ void vtx::loop(vtx::VertexContext* ctx)
         GL_FALSE,                     // transpose
         glm::value_ptr(cameraMatrix)  // value
     );
+
+    static Uint32 lastTime = 0;
+    Uint32 currentTime = SDL_GetTicks();
+    float deltaTime = (currentTime - lastTime) / 1000.0f;
+    lastTime = currentTime;
+    float rotationSpeed = glm::radians(45.0f);
+    float angle = rotationSpeed * deltaTime;
+    modelToWorld = glm::rotate(modelToWorld, angle, glm::vec3(0.0f, 1.0f, 0.0f));
 
     glUniformMatrix4fv(
         glGetUniformLocation(

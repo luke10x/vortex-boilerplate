@@ -3,15 +3,18 @@
 CXXFLAGS = -ggdb3
 CXXFLAGS += -std=c++20
 CXXFLAGS += -ferror-limit=1
-
 CXXFLAGS += -D__USE_SDL
 #CXXFLAGS += -D__USE_GLFW
 CXXFLAGS += -I./external/glm
 CXXFLAGS += -I./external/SDL/include
 
+LDLIBS += -lassimp -lz 
+
 ifeq ($(NATIVE),1)
 	CXX = clang++
+ 	CXXFLAGS += -I$(HOME)/.local/vortex_deps/assimp-build/installed/include
 	CXXFLAGS += -I/opt/homebrew/include
+ 	LDFLAGS += -L$(HOME)/.local/vortex_deps/assimp-build/installed/lib
 	LDFLAGS += -L /opt/homebrew/lib
 	LDLIBS += -framework OpenGL
 	LDLIBS += -lGLEW
@@ -35,7 +38,7 @@ endif
 
 build:
 	mkdir -p ./build
-	$(CXX) $(CXXFLAGS) ./src/example-003/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
+	$(CXX) $(CXXFLAGS) ./src/example-004/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
 		$(LDFLAGS) $(LDLIBS) -o $(OUTPUT)
 clean:
 	rm -rf ./build

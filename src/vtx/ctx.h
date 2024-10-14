@@ -274,6 +274,7 @@ static void checkOpenGLError()
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
         std::cerr << "OpenGL error: " << err << std::endl;
+        exit(1);
     }
 }
 
