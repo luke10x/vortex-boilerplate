@@ -21,14 +21,14 @@ pkgs.mkShell {
 
         git submodule update --init --recursive
 
-        export SCHWEMBER_DEPS_DIR="$HOME/.local/vortex_deps"
-        mkdir -p $SCHWEMBER_DEPS_DIR
-        echo 🍍 SCHWEMBER_DEPS_DIR=$SCHWEMBER_DEPS_DIR
+        export DEPS_DIR="$HOME/.local/vortex_deps"
+        mkdir -p $DEPS_DIR
+        echo 🍍 DEPS_DIR=$DEPS_DIR
 
-        if [ ! -f $SCHWEMBER_DEPS_DIR/dependencies_installed ]; then
+        if [ ! -f $DEPS_DIR/dependencies_installed ]; then
         
             ASSIMP_BUILD_SCRIPT=$(pwd)/external/build-assimp.sh
-            ASSIMP_BUILD_DIR=$SCHWEMBER_DEPS_DIR/assimp-build
+            ASSIMP_BUILD_DIR=$DEPS_DIR/assimp-build
             ASSIMP_SRC_DIR=$(pwd)/external/assimp
             mkdir -p $ASSIMP_BUILD_DIR/native $ASSIMP_BUILD_DIR/wasm 
             echo "🍍 Installing Assimp..."
@@ -38,7 +38,7 @@ pkgs.mkShell {
             echo "🍍 Installed Assimp for Wasm!"
 
             ### BULLET3_BUILD_SCRIPT=$(pwd)/external/build-bullet3.sh
-            ### BULLET3_BUILD_DIR=$SCHWEMBER_DEPS_DIR/bullet3-build
+            ### BULLET3_BUILD_DIR=$DEPS_DIR/bullet3-build
             ### BULLET3_SRC_DIR=$(pwd)/external/bullet3
             ### mkdir -p $BULLET3_BUILD_DIR/wasm $BULLET3_BUILD_DIR/native
             ### echo "🍍 Installing Bullet3..."
@@ -47,10 +47,10 @@ pkgs.mkShell {
             ### (cd $BULLET3_BUILD_DIR/wasm && time $BULLET3_BUILD_SCRIPT $BULLET3_SRC_DIR WASM)
             ### echo "🍍 Installed Bullet3 for Wasm!"
 
-            touch $SCHWEMBER_DEPS_DIR/dependencies_installed
-            echo "🍍 Dependencies installed in $SCHWEMBER_DEPS_DIR."
+            touch $DEPS_DIR/dependencies_installed
+            echo "🍍 Dependencies installed in $DEPS_DIR."
         else
-            echo "🍍 Dependencies are already installed in $SCHWEMBER_DEPS_DIR."
+            echo "🍍 Dependencies are already installed in $DEPS_DIR."
         fi
 
         set +e  # Disable exit on error

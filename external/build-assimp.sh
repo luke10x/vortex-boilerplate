@@ -45,7 +45,7 @@ elif [ -z "$TARGET" ]; then
     # but it fails to build it on Linux
     BUILD_ZLIB=OFF
 
-    CMAKE="cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/../installed"
+    CMAKE="cmake -DCMAKE_INSTALL_PREFIX=$(pwd)/../installed/native"
     MAKE=make
 
 else
