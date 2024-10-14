@@ -28,16 +28,25 @@ const char* HELLO_VERTEX_SHADER =
     out vec3 v_crntPos;
     out vec3 v_color;
     out vec3 v_normal;
+    out vec3 v_lightPos;
 
     uniform mat4 u_worldToView;
     uniform mat4 u_modelToWorld;
     uniform mat4 u_projection;
 
 	void main() {
-
+        // Invert the model-to-world matrix to transform
+        // the light position from world space to object space.
+        // This ensures that the light remains static relative to the object,
+        // regardless of the object's transformation by modelToWorld.
+        mat4 u_worldToModel = inverse(u_modelToWorld);
+        vec3 hardcodedLightPos = vec3(1.0f, 1.0f, 3.0f);
+        
         v_normal      = a_normal;
         v_color       = a_color;
         v_crntPos     = vec3(u_modelToWorld * vec4(a_pos, 1.0f));
+        v_lightPos    = vec3(u_worldToModel *  vec4(hardcodedLightPos, 1.0f));
+
         gl_Position   = u_projection * u_worldToView * vec4(v_crntPos, 1.0f);
 	}
 	)";
@@ -54,12 +63,13 @@ const char* HELLO_FRAGMENT_SHADER =
     in vec3 v_crntPos;
     in vec3 v_color;
     in vec3 v_normal;
+    in vec3 v_lightPos;
 
     out vec4 FragColor;
 
     void main() {
 
-        vec3 lightPos = vec3(5.0f, -5.0f, -5.0f);
+        vec3 lightPos = v_lightPos;
 
         // ambient lighting
         float ambient = 0.4f;
@@ -71,7 +81,6 @@ const char* HELLO_FRAGMENT_SHADER =
 
         vec4 surfaceColor = vec4(v_color, 1.0f);
         vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
-
 
         FragColor = surfaceColor * vec4(vec3(lightColor * (ambient + diffuse)), 1.0f);
     }
@@ -159,11 +168,11 @@ void loadModel(const char* path)
         }
 
         // Normal (if available)
-        // if (mesh->HasNormals()) {
-        //     vertex.normal.x = mesh->mNormals[i].x;
-        //     vertex.normal.y = mesh->mNormals[i].y;
-        //     vertex.normal.z = mesh->mNormals[i].z;
-        // }
+        if (mesh->HasNormals()) {
+            vertex.normal.x = mesh->mNormals[i].x;
+            vertex.normal.y = mesh->mNormals[i].y;
+            vertex.normal.z = mesh->mNormals[i].z;
+        }
         std::cerr << "Vertex details\n"
                   << "  Position: (" << vertex.position.x << ", "
                   << vertex.position.y << ", " << vertex.position.z
@@ -239,7 +248,7 @@ typedef struct {
 UserContext usr;
 
 // Create the camera matrix
-glm::vec3 cameraPosition(5.0f, 0.0f, 0.0f);
+glm::vec3 cameraPosition(5.0f, 8.0f, 0.0f);
 glm::vec3 targetPosition(0.0f, 0.0f, 0.0f);
 glm::vec3 upDirection(0.0f, 1.0f, 0.0f);
 glm::mat4 cameraMatrix = glm::lookAt(
@@ -257,7 +266,7 @@ void vtx::init(vtx::VertexContext* ctx)
     glBindVertexArray(usr.pyramidVAO);
 
     // GLB file contains normals, but Blender not
-    loadModel("tmp/red-monkey.glb");
+    loadModel("./assets/red-monkey.glb");
 
     // Create VBO with vertices
     GLuint VBO;
@@ -309,11 +318,13 @@ void vtx::init(vtx::VertexContext* ctx)
 
     // Figure projection matrix
     float fov = glm::radians(45.0f);  // Field of view in radians
-    float aspectRatio =
-        ctx->screenWidth /
-        ctx->screenHeight;     // Aspect ratio of the window
     float nearPlane = 0.1f;    // Distance to the near clipping plane
     float farPlane  = 100.0f;  // Distance to the far clipping plane
+    // Actually, this needs to be recalculated in the loop,
+    // as window could be resized at any time by user
+    float aspectRatio = ctx->screenWidth / ctx->screenHeight;     
+
+    // But, here is the initials perspective matrix
     glm::mat4 projectionMatrix =
         glm::perspective(fov, aspectRatio, nearPlane, farPlane);
 
