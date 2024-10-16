@@ -197,52 +197,9 @@ void loadModel(const char* path)
     std::cerr << "indices: " << indices.size() << std::endl;
 }
 
-void createBuffers(GLuint& VBO, GLuint& EBO)
-{
-    // Create VBO
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(
-        GL_ARRAY_BUFFER, vertices.size() * sizeof(MyVertex),
-        vertices.data(), GL_STATIC_DRAW
-    );
-
-    // Create EBO
-    glGenBuffers(1, &EBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(
-        GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-        indices.data(), GL_STATIC_DRAW
-    );
-}
-
-void setupVertexAttribs()
-{
-    // Position attribute
-    glVertexAttribPointer(
-        0, 3, GL_FLOAT, GL_FALSE, sizeof(MyVertex),
-        (void*) offsetof(MyVertex, position)
-    );
-    glEnableVertexAttribArray(0);
-
-    // Color attribute
-    glVertexAttribPointer(
-        1, 3, GL_FLOAT, GL_FALSE, sizeof(MyVertex),
-        (void*) offsetof(MyVertex, color)
-    );
-    glEnableVertexAttribArray(1);
-
-    // Normal attribute
-    glVertexAttribPointer(
-        2, 3, GL_FLOAT, GL_FALSE, sizeof(MyVertex),
-        (void*) offsetof(MyVertex, normal)
-    );
-    glEnableVertexAttribArray(2);
-}
-
 typedef struct {
     GLuint pyramidVAO;
-    GLuint shader1;
+    GLuint defaultShader;
 } UserContext;
 
 UserContext usr;
@@ -308,7 +265,7 @@ void vtx::init(vtx::VertexContext* ctx)
     glBindBuffer(GL_ARRAY_BUFFER, 0);          // VBO
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);  // EBO
 
-    usr.shader1 = vtx::createShaderProgram(
+    usr.defaultShader = vtx::createShaderProgram(
         HELLO_VERTEX_SHADER, HELLO_FRAGMENT_SHADER
     );
 
@@ -329,11 +286,11 @@ void vtx::init(vtx::VertexContext* ctx)
         glm::perspective(fov, aspectRatio, nearPlane, farPlane);
 
     // Load it to shader
-    glUseProgram(usr.shader1);
+    glUseProgram(usr.defaultShader);
 
     glUniformMatrix4fv(
         glGetUniformLocation(
-            usr.shader1, "u_projection"
+            usr.defaultShader, "u_projection"
         ),                                // uniform location
         1,                                // number of matrices
         GL_FALSE,                         // transpose
@@ -359,11 +316,11 @@ void vtx::loop(vtx::VertexContext* ctx)
 
     glClearColor(0.1f, 0.4f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glUseProgram(usr.shader1);
+    glUseProgram(usr.defaultShader);
 
     glUniformMatrix4fv(
         glGetUniformLocation(
-            usr.shader1, "u_worldToView"
+            usr.defaultShader, "u_worldToView"
         ),                            // uniform location
         1,                            // number of matrices
         GL_FALSE,                     // transpose
@@ -381,7 +338,7 @@ void vtx::loop(vtx::VertexContext* ctx)
 
     glUniformMatrix4fv(
         glGetUniformLocation(
-            usr.shader1, "u_modelToWorld"
+            usr.defaultShader, "u_modelToWorld"
         ),                            // uniform location
         1,                            // number of matrices
         GL_FALSE,                     // transpose

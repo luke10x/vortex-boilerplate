@@ -32,24 +32,24 @@ else
 	LDLIBS += -s FULL_ES2=1 -s USE_WEBGL2=1 -O0
 	LDLIBS += -s ALLOW_MEMORY_GROWTH=1 -s GL_UNSAFE_OPTS=0
 	LDLIBS += -s ASSERTIONS=1 -s SAFE_HEAP=1
-ifneq ($(wildcard $(ASSET_ROOT)/shaders),)
-	LDLIBS += $(shell ls $(ASSET_ROOT)/shaders | sed -e \
-		's|.*|--preload-file $(ASSET_ROOT)/shaders/\0@shaders/\0|')
+ifneq ($(wildcard $(APP_ROOT)/shaders),)
+	LDLIBS += $(shell ls $(APP_ROOT)/shaders | sed -e \
+		's|.*|--preload-file $(APP_ROOT)/shaders/\0@shaders/\0|')
 endif
-ifneq ($(wildcard $(ASSET_ROOT)/models),)
-	LDLIBS += $(shell ls $(ASSET_ROOT)/models | sed -e \
-		's|.*|--preload-file $(ASSET_ROOT)/models/\0@models/\0|')
+ifneq ($(wildcard $(APP_ROOT)/models),)
+	LDLIBS += $(shell ls $(APP_ROOT)/models | sed -e \
+		's|.*|--preload-file $(APP_ROOT)/models/\0@models/\0|')
 endif
-ifneq ($(wildcard $(ASSET_ROOT)/assets),)
-	LDLIBS += $(shell ls $(ASSET_ROOT)/assets | sed -e \
-		's|.*|--preload-file $(ASSET_ROOT)/assets/\0@assets/\0|')
+ifneq ($(wildcard $(APP_ROOT)/assets),)
+	LDLIBS += $(shell ls $(APP_ROOT)/assets | sed -e \
+		's|.*|--preload-file $(APP_ROOT)/assets/\0@assets/\0|')
 endif
 	OUTPUT = ./build/index.html
 endif
 
 build:
 	mkdir -p ./build
-	$(CXX) $(CXXFLAGS) ./src/example-004/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
+	$(CXX) $(CXXFLAGS) $(APP_ROOT)/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
 		$(LDFLAGS) $(LDLIBS) -o $(OUTPUT)
 clean:
 	rm -rf ./build

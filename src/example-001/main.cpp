@@ -6,7 +6,7 @@
 
 typedef struct {
     GLuint VAO1;
-    GLuint shader1;
+    GLuint defaultShader;
 } UserContext;
 
 UserContext usr;
@@ -70,7 +70,7 @@ void vtx::init(vtx::VertexContext* ctx)
     usr.VAO1 = VAO;
     // usr.VBO1 = VBO;
 
-    usr.shader1 = vtx::createShaderProgram(
+    usr.defaultShader = vtx::createShaderProgram(
         HELLO_VERTEX_SHADER, HELLO_FRAGMENT_SHADER
     );
 }
@@ -104,7 +104,7 @@ void vtx::loop(vtx::VertexContext* ctx)
     glClearColor(0.1f, 0.4f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glUseProgram(usr.shader1);
+    glUseProgram(usr.defaultShader);
     glBindVertexArray(usr.VAO1);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
