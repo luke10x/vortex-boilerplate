@@ -534,22 +534,19 @@ struct MyImGui {
         ImGui_ImplSDL2_ProcessEvent(&(*event));
     }
 
-    void beginFrame() {
+    void newFrame() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
     }
 
-    void endFrame() {
+    void renderFrame() {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
 
     void showMatrixEditor(glm::mat4* matrix, const char *title) const 
     {
-        // Create a window in ImGui
-
-        // Inside your ImGui render loop:
         if (ImGui::Begin(
                 title, nullptr, ImGuiWindowFlags_AlwaysAutoResize
             )) {
@@ -573,10 +570,10 @@ struct MyImGui {
                         // modelToWorld[col][row]
                     }
                 }
-                ImGui::EndTable();
             }
-            ImGui::End();
+            ImGui::EndTable();
         }
+        ImGui::End();
     }
 };
 // == Main program ==
@@ -660,10 +657,10 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.gizmo.updateViewMatrix(cameraMatrix);
     usr.gizmo.draw();
 
-    usr.imgui.beginFrame();
+    usr.imgui.newFrame();
     usr.imgui.showMatrixEditor(&modelToWorld, "Model-to-World for monkey");
     usr.imgui.showMatrixEditor(&cameraMatrix, "Camera matrix");
-    usr.imgui.endFrame();
+    usr.imgui.renderFrame();
 
     checkOpenGLError();
     SDL_GL_SwapWindow(ctx->sdlWindow);
