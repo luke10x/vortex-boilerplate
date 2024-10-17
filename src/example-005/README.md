@@ -1,5 +1,5 @@
-Example with Assimp basic loading
-=================================
+Example with Two models (Monkey and Gizmo) 
+==========================================
 
 Same as 004 but with also loads shows Gizmo.
 

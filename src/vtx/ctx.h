@@ -15,8 +15,10 @@
 // ***********
 
 // Screen dimensions
-const int SCREEN_WIDTH  = 400;
-const int SCREEN_HEIGHT = 300;
+// const int SCREEN_WIDTH  = 400;
+// const int SCREEN_HEIGHT = 300;
+const int SCREEN_WIDTH  = 854;
+const int SCREEN_HEIGHT = 480;
 
 // *******************************
 //  Declarations of all functions
@@ -179,6 +181,9 @@ bool initVideo()
     ctx.sdlWindow  = window;
     ctx.screenWidth = width;
     ctx.screenHeight = height;
+
+    // SDL_SetWindowGrab(window, SDL_TRUE); // Forces the window to capture all input
+    // SDL_SetRelativeMouseMode(SDL_FALSE); // Optional: Controls how the mouse pointer behaves
 #elif defined(__USE_GLFW)
     glfwGetFramebufferSize(window, &width, &height);
     ctx.glfwWindow = window;

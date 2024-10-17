@@ -47,6 +47,18 @@ endif
 	OUTPUT = ./build/index.html
 endif
 
+# All IMGUI stuff
+CXXFLAGS += -I./external/imgui
+CXXFLAGS += -I./external/imgui/backends
+IMGUI_DIR=./external/imgui
+IMGUI_SOURCES += $(IMGUI_DIR)/imgui.cpp
+IMGUI_SOURCES += $(IMGUI_DIR)/imgui_demo.cpp
+IMGUI_SOURCES += $(IMGUI_DIR)/imgui_draw.cpp
+IMGUI_SOURCES += $(IMGUI_DIR)/imgui_tables.cpp
+IMGUI_SOURCES += $(IMGUI_DIR)/imgui_widgets.cpp
+IMGUI_SOURCES += $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp
+IMGUI_SOURCES += $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+
 build:
 	mkdir -p ./build
 	$(CXX) $(CXXFLAGS) $(APP_ROOT)/main.cpp $(IMGUI_SOURCES) $(PLATFORM_SOURCES) \
