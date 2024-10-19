@@ -305,15 +305,16 @@ const char* MyModel::MODEL_VERTEX_SHADER =
         // regardless of the object's transformation by modelToWorld.
         mat4 u_worldToModel = inverse(u_modelToWorld);
         vec3 hardcodedLightPos = vec3(5.0f, 5.0f, 3.0f);
+        
         v_normal      = a_normal;
         // v_color       = a_color;
         v_crntPos     = vec3(u_modelToWorld * vec4(a_pos, 1.0f));
         v_lightPos    = vec3(u_worldToModel *  vec4(hardcodedLightPos, 1.0f));
 
-        // Default color green
+        // Default color blue
         v_color = vec3(0.1f, 0.1f, 1.0f);
 
-        // I suppose this mey be required for Emscripten
+        // I suppose this may be required for Emscripten
         if (joint_1 == u_selectedJointIndex) {
             v_color = calculateBoneHotnessColor(weight_1);
         }
