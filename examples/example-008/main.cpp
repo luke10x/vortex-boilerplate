@@ -17,7 +17,6 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
 
-
 struct Gizmo;
 struct MyVertex;
 struct MyModel;
@@ -26,7 +25,6 @@ struct UserContext;
 void vtx::init(vtx::VertexContext* ctx);
 void vtx::loop(vtx::VertexContext* ctx);
 int main(int argc, char* argv[]);
-
 
 struct Gizmo {
     static const char* GIZMO_VERTEX_SHADER;
@@ -68,10 +66,11 @@ struct Gizmo {
 
     void init();
     void updateProjectionMatrix(const glm::mat4 projectionMatrix) const;
-    void updateTransformationMatrix(const glm::mat4 transformationMatrix) const;
+    void updateTransformationMatrix(const glm::mat4 transformationMatrix
+    ) const;
     void updateViewMatrix(const glm::mat4 viewMatrix) const;
     void draw() const;
-};  
+};
 
 const char* Gizmo::GIZMO_VERTEX_SHADER =
 #ifdef __EMSCRIPTEN__
@@ -158,7 +157,8 @@ void Gizmo::init()
     );
 }
 
-void Gizmo::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
+void Gizmo::updateProjectionMatrix(const glm::mat4 projectionMatrix
+) const
 {
     glUseProgram(this->gizmoShader);
 
@@ -172,7 +172,9 @@ void Gizmo::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
     );
 }
 
-void Gizmo::updateTransformationMatrix(const glm::mat4 transformationMatrix) const
+void Gizmo::updateTransformationMatrix(
+    const glm::mat4 transformationMatrix
+) const
 {
     glUseProgram(this->gizmoShader);
 
@@ -226,10 +228,10 @@ struct MyVertex {
     struct {
         float x, y, z;
     } normal;
+    // Up to 4 bone indices (use -1 for no bone)
+    int bones[4] = {-1, -1, -1, -1};
     // Up to 4 bone weights
     float weights[4] = {0.0f};
-    // Up to 4 bone indices (use -1 for no bone)
-    float bones[4] = {-1, -1, -1, -1};
 };
 
 struct MyModel {
@@ -252,7 +254,8 @@ struct MyModel {
     void init();
     void loadModel(const char* path);
     void updateProjectionMatrix(const glm::mat4 projectionMatrix) const;
-    void updateTransformationMatrix(const glm::mat4 transformationMatrix) const;
+    void updateTransformationMatrix(const glm::mat4 transformationMatrix
+    ) const;
     void updateViewMatrix(const glm::mat4 viewMatrix) const;
     void updateSelectedJointIndex(GLuint selectedBoneIndex) const;
     void draw() const;
@@ -270,13 +273,14 @@ const char* MyModel::MODEL_VERTEX_SHADER =
     layout (location = 0) in vec3 a_pos;
     layout (location = 1) in vec3 a_color;
     layout (location = 2) in vec3 a_normal;
-    layout (location = 3) in vec4  a_weights;
-    layout (location = 4) in vec4  a_joints;
+    layout (location = 3) in ivec4  a_joints;
+    layout (location = 4) in vec4  a_weights;
 
     out vec3 v_crntPos;
     out vec3 v_color;
     out vec3 v_normal;
     out vec3 v_lightPos;
+    out vec3 fragNormal;
 
     uniform mat4 u_worldToView;
     uniform mat4 u_modelToWorld;
@@ -314,18 +318,11 @@ const char* MyModel::MODEL_VERTEX_SHADER =
         // Default color blue
         v_color = vec3(0.1f, 0.1f, 1.0f);
 
-        // I suppose this may be required for Emscripten
-        if (joint_1 == u_selectedJointIndex) {
-            v_color = calculateBoneHotnessColor(weight_1);
-        }
-        if (joint_2 == u_selectedJointIndex) {
-            v_color = calculateBoneHotnessColor(weight_2);
-        }
-        if (joint_3 == u_selectedJointIndex) {
-            v_color = calculateBoneHotnessColor(weight_3);
-        }
-        if (joint_4 == u_selectedJointIndex) {
-            v_color = calculateBoneHotnessColor(weight_4);
+        for (int i = 0; i < 4; i++) {
+            // if (int(a_joints[i]) == int(u_selectedJointIndex)) {
+            if (a_joints[i] == int(u_selectedJointIndex)) {
+                v_color = calculateBoneHotnessColor(a_weights[i]);
+            }
         }
 
         gl_Position   = u_projection * u_worldToView * vec4(v_crntPos, 1.0f);
@@ -379,8 +376,7 @@ void MyModel::init()
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(
         GL_ARRAY_BUFFER,
-        vertices.size() *
-            sizeof(MyVertex),  // all vertices in bytes
+        vertices.size() * sizeof(MyVertex),  // all vertices in bytes
         vertices.data(), GL_STATIC_DRAW
     );
 
@@ -404,8 +400,10 @@ void MyModel::init()
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, normal));
 
     // Required for animations
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, weights));
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, bones));
+    glVertexAttribIPointer(3, 4, GL_INT,            sizeof(MyVertex), (void*) offsetof(MyVertex, bones));
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, weights));
+    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, weights));
+    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, bones));
     // clang-format on
 
     glEnableVertexAttribArray(0);
@@ -436,16 +434,15 @@ void MyModel::loadModel(const char* path)
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE ||
         !scene->mRootNode) {
         std::cerr << "Error loading model: "
-                    << importer.GetErrorString() << std::endl;
+                  << importer.GetErrorString() << std::endl;
         return;
     }
 
     aiMesh* mesh = scene->mMeshes[0];  // Assuming the model has at
-                                        // least one mesh
+                                       // least one mesh
     // Print the name of the mesh
     if (mesh->mName.length > 0) {
-        std::cout << "Mesh Name: " << mesh->mName.C_Str()
-                    << std::endl;
+        std::cout << "Mesh Name: " << mesh->mName.C_Str() << std::endl;
     } else {
         // Fallback name
         std::cout << "Mesh Name: Untitled Mesh " << std::endl;
@@ -459,21 +456,53 @@ void MyModel::loadModel(const char* path)
 
     // Process bones
     for (unsigned int boneIndex = 0; boneIndex < mesh->mNumBones;
-            ++boneIndex) {
+         ++boneIndex) {
         aiBone* bone = mesh->mBones[boneIndex];
 
         // Iterate through all the vertices affected by this bone
         for (unsigned int weightIndex = 0;
-                weightIndex < bone->mNumWeights; ++weightIndex) {
+             weightIndex < bone->mNumWeights; ++weightIndex) {
             aiVertexWeight weight = bone->mWeights[weightIndex];
             int vertexId          = weight.mVertexId;
             float boneWeight      = weight.mWeight;
 
             // Store the bone index and weight in the vertex weight
             // map
-            vertexWeights[vertexId].emplace_back(
-                boneIndex, boneWeight
-            );
+            vertexWeights[vertexId].emplace_back(boneIndex, boneWeight);
+        }
+    }
+
+    for (unsigned int animIndex = 0; animIndex < scene->mNumAnimations;
+         ++animIndex) {
+        aiAnimation* animation = scene->mAnimations[animIndex];
+
+        for (unsigned int channelIndex = 0;
+             channelIndex < animation->mNumChannels; ++channelIndex) {
+            aiNodeAnim* nodeAnim = animation->mChannels[channelIndex];
+
+            // Process position keyframes
+            for (unsigned int keyIndex = 0;
+                 keyIndex < nodeAnim->mNumPositionKeys; ++keyIndex) {
+                aiVectorKey positionKey =
+                    nodeAnim->mPositionKeys[keyIndex];
+                // Store time and position
+            }
+
+            // Process rotation keyframes
+            for (unsigned int keyIndex = 0;
+                 keyIndex < nodeAnim->mNumRotationKeys; ++keyIndex) {
+                aiQuatKey rotationKey =
+                    nodeAnim->mRotationKeys[keyIndex];
+                // Store time and rotation quaternion
+            }
+
+            // Process scaling keyframes (if needed)
+            for (unsigned int keyIndex = 0;
+                 keyIndex < nodeAnim->mNumScalingKeys; ++keyIndex) {
+                aiVectorKey scalingKey =
+                    nodeAnim->mScalingKeys[keyIndex];
+                // Store time and scaling factor
+            }
         }
     }
 
@@ -492,14 +521,14 @@ void MyModel::loadModel(const char* path)
         );  // Default color is white
         aiMaterial* material =
             scene->mMaterials[mesh->mMaterialIndex];  // Get the
-                                                        // material
-                                                        // assigned to
-                                                        // the mesh
+                                                      // material
+                                                      // assigned to
+                                                      // the mesh
         if (AI_SUCCESS ==
             aiGetMaterialColor(
                 material, AI_MATKEY_COLOR_DIFFUSE, &baseColor
             )) {
-                // no-op
+            // no-op
         }
 
         // Colour (if available, otherwise default white)
@@ -528,7 +557,7 @@ void MyModel::loadModel(const char* path)
             weights.begin(), weights.end(),
             [](const auto& a, const auto& b) {
                 return a.second >
-                        b.second;  // Sort by weight descending
+                       b.second;  // Sort by weight descending
             }
         );
 
@@ -540,7 +569,7 @@ void MyModel::loadModel(const char* path)
 
         // Normalize weights to sum up to 1
         float weightSum = vertex.weights[0] + vertex.weights[1] +
-                            vertex.weights[2] + vertex.weights[3];
+                          vertex.weights[2] + vertex.weights[3];
         if (weightSum > 0.0f) {
             for (int j = 0; j < 4; ++j) {
                 vertex.weights[j] /= weightSum;
@@ -561,8 +590,8 @@ void MyModel::loadModel(const char* path)
     std::cerr << "indices: " << indices.size() << std::endl;
 }
 
-
-void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
+void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix
+) const
 {
     glUseProgram(this->defaultShader);
 
@@ -576,7 +605,8 @@ void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
     );
 }
 
-void MyModel::updateTransformationMatrix(const glm::mat4 transformationMatrix
+void MyModel::updateTransformationMatrix(
+    const glm::mat4 transformationMatrix
 ) const
 {
     glUseProgram(this->defaultShader);
@@ -631,9 +661,7 @@ void MyModel::draw() const
 }
 
 struct MyImGui {
-
-    std::unordered_map<std::string, bool>
-        openBoneNodes;
+    std::unordered_map<std::string, bool> openBoneNodes;
 
     GLuint selectedBoneIndex;
 
@@ -649,7 +677,7 @@ struct MyImGui {
         const aiNode* node,
         const aiMesh* mesh,
         std::unordered_map<std::string, bool>& openNodes,
-        int level 
+        int level
     );
     void renderBoneHierarchy(const aiScene* scene);
 };
@@ -688,152 +716,149 @@ void MyImGui::renderFrame() const
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-    void MyImGui::showMatrixEditor(glm::mat4* matrix, const char* title) const
-    {
-        if (ImGui::Begin(
-                title, nullptr, ImGuiWindowFlags_AlwaysAutoResize
-            )) {
-            if (ImGui::BeginTable(
-                    "Matrix", 4, ImGuiTableFlags_Borders
-                )) {
-                for (int row = 0; row < 4; row++) {
-                    ImGui::TableNextRow();
-                    for (int col = 0; col < 4; col++) {
-                        ImGui::TableNextColumn();
+void MyImGui::showMatrixEditor(glm::mat4* matrix, const char* title)
+    const
+{
+    if (ImGui::Begin(
+            title, nullptr, ImGuiWindowFlags_AlwaysAutoResize
+        )) {
+        if (ImGui::BeginTable("Matrix", 4, ImGuiTableFlags_Borders)) {
+            for (int row = 0; row < 4; row++) {
+                ImGui::TableNextRow();
+                for (int col = 0; col < 4; col++) {
+                    ImGui::TableNextColumn();
 
-                        // Use InputFloat to edit each element in the
-                        // matrix
-                        char label[32];
-                        snprintf(
-                            label, sizeof(label), "##%d%d", row, col
-                        );
+                    // Use InputFloat to edit each element in the
+                    // matrix
+                    char label[32];
+                    snprintf(label, sizeof(label), "##%d%d", row, col);
 
-                        // Access the matrix element
-                        ImGui::SetNextItemWidth(90
-                        );  // Set the input width
-                        ImGui::InputFloat(
-                            label, &(*matrix)[col][row], 0.01f, 1.0f,
-                            "%.2f"
-                        );
-                        // Note: glm::mat4 is column-major, so we use
-                        // modelToWorld[col][row]
-                    }
-                }
-            }
-            ImGui::EndTable();
-        }
-        ImGui::End();
-    }
-
-    // Helper function to find the bone index in the mesh
-    int MyImGui::FindBoneIndex(const aiMesh* mesh, const std::string& boneName)
-    {
-        for (unsigned int i = 0; i < mesh->mNumBones; ++i) {
-            if (boneName == mesh->mBones[i]->mName.C_Str()) {
-                return i;
-            }
-        }
-        return -1;  // Return -1 if the bone was not found in the mesh
-    }
-
-    // Function to display the offset matrix when a bone is clicked
-    void MyImGui::ShowOffsetMatrix(const aiMatrix4x4& offsetMatrix)
-    {
-        ImGui::Text("Offset Matrix:");
-        for (int row = 0; row < 4; ++row) {
-            ImGui::Text(
-                "    [%f, %f, %f, %f]", offsetMatrix[row][0],
-                offsetMatrix[row][1], offsetMatrix[row][2],
-                offsetMatrix[row][3]
-            );
-        }
-    }
-
-    // Recursive function to show bone hierarchy with click-to-reveal
-    // details
-    void MyImGui::_showBoneHierarchy(
-        const aiNode* node,
-        const aiMesh* mesh,
-        std::unordered_map<std::string, bool>& openNodes,
-        int level = 0
-    )
-    {
-        std::string nodeName = node->mName.C_Str();
-
-        int boneIndex = FindBoneIndex(mesh, nodeName);
-        bool isBone   = (boneIndex >= 0);
-
-        ImGui::TableNextRow();
-
-        ImGui::TableSetColumnIndex(0);
-        
-        std::string buttonLabel = "Select##" + std::to_string(boneIndex);
-        if (ImGui::Button(buttonLabel.c_str())) {
-            std::cout << "Bone selected: " << node->mName.C_Str()
-                      << std::endl;
-            selectedBoneIndex = boneIndex;
-        }
-
-        ImGui::TableSetColumnIndex(1);
-
-        ImGui::Indent(level * 2);
-        bool isOpen = openNodes[nodeName];
-        if (ImGui::Selectable(nodeName.c_str(), isOpen)) {
-            openNodes[nodeName] = !isOpen;
-        }
-        ImGui::Unindent(level * 2);
-
-        if (isOpen && isBone) {
-            std::string littleWindowLabel = "Bone: " + nodeName;
-
-            ImGui::Begin(littleWindowLabel.c_str());
-            ImGui::Text("Bone Index: %d", boneIndex);
-            ShowOffsetMatrix(mesh->mBones[boneIndex]->mOffsetMatrix);
-            ImGui::End();
-        }
-
-        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            // Recur for each child
-            _showBoneHierarchy(
-                node->mChildren[i], mesh, openNodes, level + 1
-            );
-        }
-    }
-
-    // Main function to render the ImGui window with the bone hierarchy
-    void MyImGui::renderBoneHierarchy(const aiScene* scene)
-    {
-        if (ImGui::Begin(
-                "Bone Hierarchy", nullptr,
-                ImGuiWindowFlags_AlwaysAutoResize
-            )) {
-            // NOTICE: Same assumption is done in MyModel::loadModel()
-            aiMesh* mesh = scene->mMeshes[0];
-
-            if (mesh->mNumBones > 0) {
-                // Start from the root node of the scene
-                if (ImGui::BeginTable(
-                        "Bone Table", 2,
-                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
-                    )) {
-                    // Set up the column headers
-                    ImGui::TableSetupColumn("Bone Name");
-                    ImGui::TableSetupColumn("Select");
-
-                    ImGui::TableHeadersRow();  // Display header row
-
-                    _showBoneHierarchy(
-                        scene->mRootNode, mesh, openBoneNodes
+                    // Access the matrix element
+                    ImGui::SetNextItemWidth(90);  // Set the input width
+                    ImGui::InputFloat(
+                        label, &(*matrix)[col][row], 0.01f, 1.0f, "%.2f"
                     );
+                    // Note: glm::mat4 is column-major, so we use
+                    // modelToWorld[col][row]
                 }
-                ImGui::EndTable();  // End the table
-
-            } else {
-                ImGui::Text("No bones in the model.");
             }
         }
+        ImGui::EndTable();
+    }
+    ImGui::End();
+}
+
+// Helper function to find the bone index in the mesh
+int MyImGui::FindBoneIndex(
+    const aiMesh* mesh,
+    const std::string& boneName
+)
+{
+    for (unsigned int i = 0; i < mesh->mNumBones; ++i) {
+        if (boneName == mesh->mBones[i]->mName.C_Str()) {
+            return i;
+        }
+    }
+    return -1;  // Return -1 if the bone was not found in the mesh
+}
+
+// Function to display the offset matrix when a bone is clicked
+void MyImGui::ShowOffsetMatrix(const aiMatrix4x4& offsetMatrix)
+{
+    ImGui::Text("Offset Matrix:");
+    for (int row = 0; row < 4; ++row) {
+        ImGui::Text(
+            "    [%f, %f, %f, %f]", offsetMatrix[row][0],
+            offsetMatrix[row][1], offsetMatrix[row][2],
+            offsetMatrix[row][3]
+        );
+    }
+}
+
+// Recursive function to show bone hierarchy with click-to-reveal
+// details
+void MyImGui::_showBoneHierarchy(
+    const aiNode* node,
+    const aiMesh* mesh,
+    std::unordered_map<std::string, bool>& openNodes,
+    int level = 0
+)
+{
+    std::string nodeName = node->mName.C_Str();
+
+    int boneIndex = FindBoneIndex(mesh, nodeName);
+    bool isBone   = (boneIndex >= 0);
+
+    ImGui::TableNextRow();
+
+    ImGui::TableSetColumnIndex(0);
+
+    std::string buttonLabel = "Select##" + std::to_string(boneIndex);
+    if (ImGui::Button(buttonLabel.c_str())) {
+        std::cout << "Bone selected: " << node->mName.C_Str()
+                  << std::endl;
+        selectedBoneIndex = boneIndex;
+    }
+
+    ImGui::TableSetColumnIndex(1);
+
+    ImGui::Indent(level * 2);
+    bool isOpen = openNodes[nodeName];
+    if (ImGui::Selectable(nodeName.c_str(), isOpen)) {
+        openNodes[nodeName] = !isOpen;
+    }
+    ImGui::Unindent(level * 2);
+
+    if (isOpen && isBone) {
+        std::string littleWindowLabel = "Bone: " + nodeName;
+
+        ImGui::Begin(littleWindowLabel.c_str());
+        ImGui::Text("Bone Index: %d", boneIndex);
+        ShowOffsetMatrix(mesh->mBones[boneIndex]->mOffsetMatrix);
         ImGui::End();
     }
+
+    for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+        // Recur for each child
+        _showBoneHierarchy(
+            node->mChildren[i], mesh, openNodes, level + 1
+        );
+    }
+}
+
+// Main function to render the ImGui window with the bone hierarchy
+void MyImGui::renderBoneHierarchy(const aiScene* scene)
+{
+    if (ImGui::Begin(
+            "Bone Hierarchy", nullptr, ImGuiWindowFlags_AlwaysAutoResize
+        )) {
+        // NOTICE: Same assumption is done in MyModel::loadModel()
+        aiMesh* mesh = scene->mMeshes[0];
+
+        if (mesh->mNumBones > 0) {
+            // Start from the root node of the scene
+            if (ImGui::BeginTable(
+                    "Bone Table", 2,
+                    ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg
+                )) {
+                // Set up the column headers
+                ImGui::TableSetupColumn("Bone Name");
+                ImGui::TableSetupColumn("Select");
+
+                ImGui::TableHeadersRow();  // Display header row
+
+                _showBoneHierarchy(
+                    scene->mRootNode, mesh, openBoneNodes
+                );
+            }
+            ImGui::EndTable();  // End the table
+
+        } else {
+            ImGui::Text("No bones in the model.");
+        }
+    }
+    ImGui::End();
+}
 // == Main program ==
 
 struct UserContext {
