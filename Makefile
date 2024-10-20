@@ -50,6 +50,7 @@ endif
 # All IMGUI stuff
 CXXFLAGS += -I./external/imgui
 CXXFLAGS += -I./external/imgui/backends
+CXXFLAGS += ${CXXFLAGS_EXTRA}
 IMGUI_DIR=./external/imgui
 IMGUI_SOURCES += $(IMGUI_DIR)/imgui.cpp
 IMGUI_SOURCES += $(IMGUI_DIR)/imgui_demo.cpp

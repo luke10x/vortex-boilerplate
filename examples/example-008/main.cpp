@@ -12,10 +12,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../../src/vtx/ctx.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
+
+#include "animation-player.h"
+#include "../../src/vtx/ctx.h"
 
 struct Gizmo;
 struct MyVertex;
@@ -234,6 +236,7 @@ struct MyVertex {
     float weights[4] = {0.0f};
 };
 
+
 struct MyModel {
     static const char* MODEL_VERTEX_SHADER;
     static const char* MODEL_FRAGMENT_SHADER;
@@ -244,6 +247,13 @@ struct MyModel {
     GLuint modelVAO;
     GLuint defaultShader;
     const aiScene* scene;
+    // glm::mat4 globalInverseTransform;
+    glm::mat4 boneTransforms[100];
+    
+    AnimationPlayer ap;
+
+	// Animation animation;
+	// Bone skeleton;
 
     // importer owns scene, therefore it needs to kept alive,
     // as the scene will be used later in ImGui panels.
@@ -258,7 +268,10 @@ struct MyModel {
     ) const;
     void updateViewMatrix(const glm::mat4 viewMatrix) const;
     void updateSelectedJointIndex(GLuint selectedBoneIndex) const;
+    // void updateBoneTransform(const glm::mat4& boneTransform) const; 
+    void updateBoneTransform(const glm::mat4* boneTransform, int count) const;
     void draw() const;
+
 };
 
 const char* MyModel::MODEL_VERTEX_SHADER =
@@ -277,31 +290,25 @@ const char* MyModel::MODEL_VERTEX_SHADER =
     layout (location = 4) in vec4  a_weights;
 
     out vec3 v_crntPos;
-    out vec3 v_color;
+    out vec4 v_color;
     out vec3 v_normal;
     out vec3 v_lightPos;
-    out vec3 fragNormal;
+
+    const int MAX_BONES = 200;
 
     uniform mat4 u_worldToView;
     uniform mat4 u_modelToWorld;
     uniform mat4 u_projection;
+    uniform mat4 u_bones[MAX_BONES];
 
     uniform uint u_selectedJointIndex;
 
     // Higher weight redder it is, lower weight - bluer
-    vec3 calculateBoneHotnessColor(float weight) {
-        return vec3(weight, 1.0 - weight, 0.0);
+    vec4 calculateBoneHotnessColor(float weight) {
+        return vec4(weight, 1.0 - weight, 0.0, 1.0f);
     }
 
     void main() {
-        uint joint_1   = uint(a_joints[0]);
-        uint joint_2   = uint(a_joints[1]);
-        uint joint_3   = uint(a_joints[2]);
-        uint joint_4   = uint(a_joints[3]);
-        float weight_1 = a_weights[0];
-        float weight_2 = a_weights[1];
-        float weight_3 = a_weights[2];
-        float weight_4 = a_weights[3];
 
         // Invert the model-to-world matrix to transform
         // the light position from world space to object space.
@@ -316,16 +323,29 @@ const char* MyModel::MODEL_VERTEX_SHADER =
         v_lightPos    = vec3(u_worldToModel *  vec4(hardcodedLightPos, 1.0f));
 
         // Default color blue
-        v_color = vec3(0.1f, 0.1f, 1.0f);
+        v_color = vec4(0.1f, 0.1f, 1.0f, 1.0f);
 
         for (int i = 0; i < 4; i++) {
-            // if (int(a_joints[i]) == int(u_selectedJointIndex)) {
             if (a_joints[i] == int(u_selectedJointIndex)) {
                 v_color = calculateBoneHotnessColor(a_weights[i]);
             }
         }
 
-        gl_Position   = u_projection * u_worldToView * vec4(v_crntPos, 1.0f);
+        // vec4 posL     = vec4(v_crntPos, 1.0f);
+
+        mat4 BoneTransform = u_bones[a_joints[0]] * a_weights[0];
+        BoneTransform     += u_bones[a_joints[1]] * a_weights[1];
+        BoneTransform     += u_bones[a_joints[2]] * a_weights[2];
+        BoneTransform     += u_bones[a_joints[3]] * a_weights[3];
+
+        vec4 posL     = BoneTransform * vec4(v_crntPos, 1.0f);
+        gl_Position   = u_projection * u_worldToView * posL;
+
+        // TODO animate normals
+        // vec4 NormalL = BoneTransform * vec4(Normal, 0.0);
+        // Normal0      = (gWorld * NormalL).xyz;
+        // WorldPos0    = (gWorld * PosL).xyz;  
+
 	}
 	)";
 
@@ -339,7 +359,7 @@ const char* MyModel::MODEL_FRAGMENT_SHADER =
 	precision mediump float;
 
     in vec3 v_crntPos;
-    in vec3 v_color;
+    in vec4 v_color;
     in vec3 v_normal;
     in vec3 v_lightPos;
 
@@ -357,7 +377,8 @@ const char* MyModel::MODEL_FRAGMENT_SHADER =
         vec3 lightDirection = normalize(lightPos - v_crntPos);
         float diffuse = 0.6f * max(dot(normal, lightDirection), 0.0f);
 
-        vec4 surfaceColor = vec4(v_color, 1.0f);
+        // vec4 surfaceColor = vec4(v_color, 1.0f);
+        vec4 surfaceColor = v_color;
         vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
 
         FragColor = surfaceColor * vec4(vec3(lightColor * (ambient + diffuse)), 1.0f);
@@ -427,7 +448,6 @@ void MyModel::loadModel(const char* path)
     this->scene = importer.ReadFile(
         path,  // path of the file
         aiProcess_Triangulate | aiProcess_FlipUVs |
-            // aiProcess_GenNormals |
             aiProcess_CalcTangentSpace
     );
 
@@ -440,6 +460,10 @@ void MyModel::loadModel(const char* path)
 
     aiMesh* mesh = scene->mMeshes[0];  // Assuming the model has at
                                        // least one mesh
+
+    ap.m_pScene = scene;
+    ap.LoadMeshBones(0, mesh) ;
+
     // Print the name of the mesh
     if (mesh->mName.length > 0) {
         std::cout << "Mesh Name: " << mesh->mName.C_Str() << std::endl;
@@ -472,6 +496,7 @@ void MyModel::loadModel(const char* path)
         }
     }
 
+/*
     for (unsigned int animIndex = 0; animIndex < scene->mNumAnimations;
          ++animIndex) {
         aiAnimation* animation = scene->mAnimations[animIndex];
@@ -505,7 +530,7 @@ void MyModel::loadModel(const char* path)
             }
         }
     }
-
+*/
     // Extract vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
         MyVertex vertex;
@@ -643,6 +668,26 @@ void MyModel::updateSelectedJointIndex(GLuint selectedBoneIndex) const
             this->defaultShader, "u_selectedJointIndex"
         ),                 // Loc
         selectedBoneIndex  // value
+    );
+}
+
+/*
+ * Populates one element to boneTransformation matrices array
+ */
+void MyModel::updateBoneTransform(const glm::mat4* boneTransform, int count) const {
+    if (count >= 200) {
+        std::cerr << "Too many bones in file" << std::endl;
+        exit(1);
+    }
+    // TODO if index exceedds max bones then exit
+    glUseProgram(this->defaultShader);
+    glUniformMatrix4fv(
+        glGetUniformLocation(
+            this->defaultShader, "u_bones"
+        ),                 // Loc
+        count, // count
+        GL_TRUE, // transpose
+        glm::value_ptr(boneTransform[0]) // put only one value in specific index
     );
 }
 
@@ -870,7 +915,7 @@ struct UserContext {
 UserContext usr;
 
 // Create the camera matrix
-glm::vec3 cameraPosition(15.0f, 18.0f, 3.0f);
+glm::vec3 cameraPosition(1.0f, 5.0f, 15.0f);
 glm::vec3 targetPosition(0.0f, 0.0f, 0.0f);
 glm::vec3 upDirection(0.0f, 1.0f, 0.0f);
 glm::mat4 cameraMatrix = glm::lookAt(
@@ -885,6 +930,7 @@ void vtx::init(vtx::VertexContext* ctx)
 {
     // GLB file contains normals, but Blender not
     usr.human.loadModel("./assets/human.glb");
+    // usr.human.loadModel("../assets/animated-human/Blend/Animated\ Human.blend");
     usr.human.init();
     usr.gizmo.init();
     usr.imgui.init(ctx);
@@ -933,6 +979,13 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.human.updateTransformationMatrix(modelToWorld);
     usr.human.updateViewMatrix(cameraMatrix);
     usr.human.updateSelectedJointIndex(usr.imgui.selectedBoneIndex);
+    glm::mat4 boneTransforms[100];
+
+    float elapsedTime = (float)SDL_GetTicks() / 1000;
+
+    std::vector<glm::mat4> T;
+    usr.human.ap.GetBoneTransforms(elapsedTime, T);
+    usr.human.updateBoneTransform(T.data(), T.size());
     usr.human.draw();
 
     usr.gizmo.updateTransformationMatrix(modelToWorld);
