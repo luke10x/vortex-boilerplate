@@ -12,12 +12,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../../src/vtx/ctx.h"
+#include "animation-mixer.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
-
-#include "animation-player.h"
-#include "../../src/vtx/ctx.h"
 
 struct Gizmo;
 struct MyVertex;
@@ -236,7 +235,6 @@ struct MyVertex {
     float weights[4] = {0.0f};
 };
 
-
 struct MyModel {
     static const char* MODEL_VERTEX_SHADER;
     static const char* MODEL_FRAGMENT_SHADER;
@@ -247,13 +245,9 @@ struct MyModel {
     GLuint modelVAO;
     GLuint defaultShader;
     const aiScene* scene;
-    // glm::mat4 globalInverseTransform;
     glm::mat4 boneTransforms[100];
-    
-    AnimationPlayer ap;
 
-	// Animation animation;
-	// Bone skeleton;
+    AnimationMixer ap;
 
     // importer owns scene, therefore it needs to kept alive,
     // as the scene will be used later in ImGui panels.
@@ -268,10 +262,10 @@ struct MyModel {
     ) const;
     void updateViewMatrix(const glm::mat4 viewMatrix) const;
     void updateSelectedJointIndex(GLuint selectedBoneIndex) const;
-    // void updateBoneTransform(const glm::mat4& boneTransform) const; 
-    void updateBoneTransform(const glm::mat4* boneTransform, int count) const;
+    // void updateBoneTransform(const glm::mat4& boneTransform) const;
+    void updateBoneTransform(const glm::mat4* boneTransform, int count)
+        const;
     void draw() const;
-
 };
 
 const char* MyModel::MODEL_VERTEX_SHADER =
@@ -283,10 +277,10 @@ const char* MyModel::MODEL_VERTEX_SHADER =
     R"(
 	precision mediump float;
 
-    layout (location = 0) in vec3 a_pos;
-    layout (location = 1) in vec3 a_color;
-    layout (location = 2) in vec3 a_normal;
-    layout (location = 3) in ivec4  a_joints;
+    layout (location = 0) in vec3  a_pos;
+    layout (location = 1) in vec3  a_color;
+    layout (location = 2) in vec3  a_normal;
+    layout (location = 3) in ivec4 a_joints;
     layout (location = 4) in vec4  a_weights;
 
     out vec3 v_crntPos;
@@ -296,9 +290,23 @@ const char* MyModel::MODEL_VERTEX_SHADER =
 
     const int MAX_BONES = 200;
 
+    // Converts world-space coordinates to view-space coordinates (camera space).
+    // Applied to all objects in the scene to align with the camera's position and orientation.
     uniform mat4 u_worldToView;
+
+    // Converts model-space coordinates to world-space coordinates.
+    // This matrix transforms an object's local vertices into the global scene.
+    // Applied to each model to position, scale, and rotate it within the world.
     uniform mat4 u_modelToWorld;
+
+    // Projection matrix: transforms view-space coordinates to clip-space coordinates.
+    // Determines how objects are projected onto the screen (perspective or orthographic).
     uniform mat4 u_projection;
+
+    // Array of bone transformation matrices for skeletal animation.
+    // Each matrix in u_bones adjusts the position and rotation 
+    // of a specific bone in model space.
+    // MAX_BONES sets the maximum number of bones per model.
     uniform mat4 u_bones[MAX_BONES];
 
     uniform uint u_selectedJointIndex;
@@ -315,9 +323,9 @@ const char* MyModel::MODEL_VERTEX_SHADER =
         // This ensures that the light remains static relative to the object,
         // regardless of the object's transformation by modelToWorld.
         mat4 u_worldToModel = inverse(u_modelToWorld);
-        vec3 hardcodedLightPos = vec3(5.0f, 5.0f, 3.0f);
+        vec3 hardcodedLightPos = vec3(-5.0f, 5.0f, 3.0f);
         
-        v_normal      = a_normal;
+        // v_normal      = a_normal;
         // v_color       = a_color;
         v_crntPos     = vec3(u_modelToWorld * vec4(a_pos, 1.0f));
         v_lightPos    = vec3(u_worldToModel *  vec4(hardcodedLightPos, 1.0f));
@@ -333,15 +341,17 @@ const char* MyModel::MODEL_VERTEX_SHADER =
 
         // vec4 posL     = vec4(v_crntPos, 1.0f);
 
-        mat4 BoneTransform = u_bones[a_joints[0]] * a_weights[0];
-        BoneTransform     += u_bones[a_joints[1]] * a_weights[1];
-        BoneTransform     += u_bones[a_joints[2]] * a_weights[2];
-        BoneTransform     += u_bones[a_joints[3]] * a_weights[3];
+        mat4 boneTransform = u_bones[a_joints[0]] * a_weights[0];
+        boneTransform     += u_bones[a_joints[1]] * a_weights[1];
+        boneTransform     += u_bones[a_joints[2]] * a_weights[2];
+        boneTransform     += u_bones[a_joints[3]] * a_weights[3];
 
-        vec4 posL     = BoneTransform * vec4(v_crntPos, 1.0f);
-        gl_Position   = u_projection * u_worldToView * posL;
+        vec4 animatedPos  = boneTransform * vec4(v_crntPos, 1.0f);
+        gl_Position       = u_projection * u_worldToView * u_modelToWorld * animatedPos;
 
         // TODO animate normals
+        v_normal = mat3(transpose(inverse(u_modelToWorld * boneTransform))) * a_normal;
+        v_normal = normalize(v_normal);
         // vec4 NormalL = BoneTransform * vec4(Normal, 0.0);
         // Normal0      = (gWorld * NormalL).xyz;
         // WorldPos0    = (gWorld * PosL).xyz;  
@@ -423,8 +433,6 @@ void MyModel::init()
     // Required for animations
     glVertexAttribIPointer(3, 4, GL_INT,            sizeof(MyVertex), (void*) offsetof(MyVertex, bones));
     glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, weights));
-    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, weights));
-    // glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(MyVertex), (void*) offsetof(MyVertex, bones));
     // clang-format on
 
     glEnableVertexAttribArray(0);
@@ -461,8 +469,7 @@ void MyModel::loadModel(const char* path)
     aiMesh* mesh = scene->mMeshes[0];  // Assuming the model has at
                                        // least one mesh
 
-    ap.m_pScene = scene;
-    ap.LoadMeshBones(0, mesh) ;
+    ap.initBones(scene, mesh);
 
     // Print the name of the mesh
     if (mesh->mName.length > 0) {
@@ -496,41 +503,6 @@ void MyModel::loadModel(const char* path)
         }
     }
 
-/*
-    for (unsigned int animIndex = 0; animIndex < scene->mNumAnimations;
-         ++animIndex) {
-        aiAnimation* animation = scene->mAnimations[animIndex];
-
-        for (unsigned int channelIndex = 0;
-             channelIndex < animation->mNumChannels; ++channelIndex) {
-            aiNodeAnim* nodeAnim = animation->mChannels[channelIndex];
-
-            // Process position keyframes
-            for (unsigned int keyIndex = 0;
-                 keyIndex < nodeAnim->mNumPositionKeys; ++keyIndex) {
-                aiVectorKey positionKey =
-                    nodeAnim->mPositionKeys[keyIndex];
-                // Store time and position
-            }
-
-            // Process rotation keyframes
-            for (unsigned int keyIndex = 0;
-                 keyIndex < nodeAnim->mNumRotationKeys; ++keyIndex) {
-                aiQuatKey rotationKey =
-                    nodeAnim->mRotationKeys[keyIndex];
-                // Store time and rotation quaternion
-            }
-
-            // Process scaling keyframes (if needed)
-            for (unsigned int keyIndex = 0;
-                 keyIndex < nodeAnim->mNumScalingKeys; ++keyIndex) {
-                aiVectorKey scalingKey =
-                    nodeAnim->mScalingKeys[keyIndex];
-                // Store time and scaling factor
-            }
-        }
-    }
-*/
     // Extract vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
         MyVertex vertex;
@@ -674,7 +646,11 @@ void MyModel::updateSelectedJointIndex(GLuint selectedBoneIndex) const
 /*
  * Populates one element to boneTransformation matrices array
  */
-void MyModel::updateBoneTransform(const glm::mat4* boneTransform, int count) const {
+void MyModel::updateBoneTransform(
+    const glm::mat4* boneTransform,
+    int count
+) const
+{
     if (count >= 200) {
         std::cerr << "Too many bones in file" << std::endl;
         exit(1);
@@ -682,12 +658,11 @@ void MyModel::updateBoneTransform(const glm::mat4* boneTransform, int count) con
     // TODO if index exceedds max bones then exit
     glUseProgram(this->defaultShader);
     glUniformMatrix4fv(
-        glGetUniformLocation(
-            this->defaultShader, "u_bones"
-        ),                 // Loc
-        count, // count
-        GL_TRUE, // transpose
-        glm::value_ptr(boneTransform[0]) // put only one value in specific index
+        glGetUniformLocation(this->defaultShader, "u_bones"),  // Loc
+        count,                                                 // count
+        GL_TRUE,  // transpose
+        glm::value_ptr(boneTransform[0]
+        )  // put only one value in specific index
     );
 }
 
@@ -838,7 +813,8 @@ void MyImGui::_showBoneHierarchy(
 
     ImGui::TableSetColumnIndex(0);
 
-    std::string buttonLabel = "Select##" + std::to_string(boneIndex);
+    std::string buttonLabel =
+        "Select##" + std::to_string(boneIndex) + " " + nodeName;
     if (ImGui::Button(buttonLabel.c_str())) {
         std::cout << "Bone selected: " << node->mName.C_Str()
                   << std::endl;
@@ -981,10 +957,10 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.human.updateSelectedJointIndex(usr.imgui.selectedBoneIndex);
     glm::mat4 boneTransforms[100];
 
-    float elapsedTime = (float)SDL_GetTicks() / 1000;
+    float elapsedTime = 0.1f * (float) SDL_GetTicks() / 1000;
 
     std::vector<glm::mat4> T;
-    usr.human.ap.GetBoneTransforms(elapsedTime, T);
+    usr.human.ap.hydrateBoneTransforms(T, elapsedTime, 0);
     usr.human.updateBoneTransform(T.data(), T.size());
     usr.human.draw();
 
