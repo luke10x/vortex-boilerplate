@@ -7,7 +7,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -245,9 +247,10 @@ struct MyModel {
     GLuint modelVAO;
     GLuint defaultShader;
     const aiScene* scene;
+    const aiMesh* mesh;
     glm::mat4 boneTransforms[100];
 
-    AnimationMixer ap;
+    AnimationMixer am;
 
     // importer owns scene, therefore it needs to kept alive,
     // as the scene will be used later in ImGui panels.
@@ -325,9 +328,7 @@ const char* MyModel::MODEL_VERTEX_SHADER =
         mat4 u_worldToModel = inverse(u_modelToWorld);
         vec3 hardcodedLightPos = vec3(-5.0f, 5.0f, 3.0f);
         
-        // v_normal      = a_normal;
-        // v_color       = a_color;
-        v_crntPos     = vec3(u_modelToWorld * vec4(a_pos, 1.0f));
+        v_crntPos     = a_pos; //vec3(u_modelToWorld * vec4(a_pos, 1.0f));
         v_lightPos    = vec3(u_worldToModel *  vec4(hardcodedLightPos, 1.0f));
 
         // Default color blue
@@ -345,9 +346,14 @@ const char* MyModel::MODEL_VERTEX_SHADER =
         boneTransform     += u_bones[a_joints[1]] * a_weights[1];
         boneTransform     += u_bones[a_joints[2]] * a_weights[2];
         boneTransform     += u_bones[a_joints[3]] * a_weights[3];
+        
 
-        vec4 animatedPos  = boneTransform * vec4(v_crntPos, 1.0f);
-        gl_Position       = u_projection * u_worldToView * u_modelToWorld * animatedPos;
+        // vec4 animatedPos  = boneTransform * vec4(v_crntPos, 1.0f);
+        // gl_Position       = u_projection * u_worldToView * u_modelToWorld * animatedPos;
+
+        vec4 animatedPos = boneTransform * vec4(v_crntPos, 1.0f);
+        animatedPos = u_modelToWorld * animatedPos;
+        gl_Position = u_projection * u_worldToView * animatedPos;
 
         // TODO animate normals
         v_normal = mat3(transpose(inverse(u_modelToWorld * boneTransform))) * a_normal;
@@ -469,7 +475,7 @@ void MyModel::loadModel(const char* path)
     aiMesh* mesh = scene->mMeshes[0];  // Assuming the model has at
                                        // least one mesh
 
-    ap.initBones(scene, mesh);
+    am.initBones(scene, mesh);
 
     // Print the name of the mesh
     if (mesh->mName.length > 0) {
@@ -699,7 +705,7 @@ struct MyImGui {
         std::unordered_map<std::string, bool>& openNodes,
         int level
     );
-    void renderBoneHierarchy(const aiScene* scene);
+    void renderBoneHierarchy(const aiScene* scene, const aiMesh* mesh);
 };
 
 void MyImGui::init(vtx::VertexContext* ctx) const
@@ -848,7 +854,10 @@ void MyImGui::_showBoneHierarchy(
 }
 
 // Main function to render the ImGui window with the bone hierarchy
-void MyImGui::renderBoneHierarchy(const aiScene* scene)
+void MyImGui::renderBoneHierarchy(
+    const aiScene* scene,
+    const aiMesh* mesh
+)
 {
     if (ImGui::Begin(
             "Bone Hierarchy", nullptr, ImGuiWindowFlags_AlwaysAutoResize
@@ -880,12 +889,14 @@ void MyImGui::renderBoneHierarchy(const aiScene* scene)
     }
     ImGui::End();
 }
+
 // == Main program ==
 
 struct UserContext {
     Gizmo gizmo;
     MyModel human;
     MyImGui imgui;
+    AnimationMixerControls amc;
 };
 
 UserContext usr;
@@ -906,10 +917,10 @@ void vtx::init(vtx::VertexContext* ctx)
 {
     // GLB file contains normals, but Blender not
     usr.human.loadModel("./assets/human.glb");
-    // usr.human.loadModel("../assets/animated-human/Blend/Animated\ Human.blend");
     usr.human.init();
     usr.gizmo.init();
     usr.imgui.init(ctx);
+    usr.amc.initAnimationMixerControls(usr.human.am);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -952,15 +963,37 @@ void vtx::loop(vtx::VertexContext* ctx)
     glClearColor(0.1f, 0.4f, 0.1f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+static Uint32 lastTime = 0;
+Uint32 currentTime = SDL_GetTicks();
+float deltaTime = (currentTime - lastTime) / 1000.0f;
+lastTime = currentTime;
+
+float rotationSpeed = glm::radians(45.0f);  // Rotation speed in radians per second
+float angle = rotationSpeed * SDL_GetTicks() / 1000.0f;  // Total angle based on elapsed time
+
+modelToWorld = glm::mat4(1.0f);  // Start with an identity matrix
+modelToWorld = glm::rotate(modelToWorld, angle, glm::vec3(0.0f, 1.0f, 0.0f));
+
     usr.human.updateTransformationMatrix(modelToWorld);
     usr.human.updateViewMatrix(cameraMatrix);
     usr.human.updateSelectedJointIndex(usr.imgui.selectedBoneIndex);
     glm::mat4 boneTransforms[100];
 
-    float elapsedTime = 0.1f * (float) SDL_GetTicks() / 1000;
+    float elapsedTime = 1.0f * (float) SDL_GetTicks() / 1000;
+
+    int selectedAnimationIndex0 = usr.amc.selectedAnimation0;
+    int selectedAnimationIndex1 = usr.amc.selectedAnimation1;
+    float ticksPerSecond0       = usr.amc.ticksPerSecond0;
+    float ticksPerSecond1       = usr.amc.ticksPerSecond1;
 
     std::vector<glm::mat4> T;
-    usr.human.ap.hydrateBoneTransforms(T, elapsedTime, 0);
+    usr.human.am.hydrateBoneTransforms(
+        T,            // buffer to be hydrated
+        elapsedTime,  // in seconds
+        selectedAnimationIndex0, ticksPerSecond0,
+        selectedAnimationIndex1, ticksPerSecond1,
+        usr.amc.blendingFactor
+    );  // Use amimation mixer animation
     usr.human.updateBoneTransform(T.data(), T.size());
     usr.human.draw();
 
@@ -974,7 +1007,10 @@ void vtx::loop(vtx::VertexContext* ctx)
         &modelToWorld, "Model-to-World for human"
     );
     usr.imgui.showMatrixEditor(&cameraMatrix, "Camera matrix");
-    usr.imgui.renderBoneHierarchy(usr.human.scene);
+    usr.imgui.renderBoneHierarchy(usr.human.scene, usr.human.mesh);
+
+    // AMC must be within IMGUI frame!
+    usr.amc.renderAnimationControls(usr.human.am, elapsedTime);
 
     usr.imgui.renderFrame();  // ------------------------
 

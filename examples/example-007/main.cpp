@@ -242,6 +242,7 @@ struct MyModel {
     GLuint modelVAO;
     GLuint defaultShader;
     const aiScene* scene;
+    const aiMesh* mesh;
 
     // importer owns scene, therefore it needs to kept alive,
     // as the scene will be used later in ImGui panels.
@@ -250,7 +251,7 @@ struct MyModel {
     Assimp::Importer importer;
 
     void init();
-    void loadModel(const char* path);
+    void loadModel(const char* path, const int meshIndex);
     void updateProjectionMatrix(const glm::mat4 projectionMatrix) const;
     void updateTransformationMatrix(const glm::mat4 transformationMatrix) const;
     void updateViewMatrix(const glm::mat4 viewMatrix) const;
@@ -423,7 +424,7 @@ void MyModel::init()
     );
 }
 
-void MyModel::loadModel(const char* path)
+void MyModel::loadModel(const char* path, const int meshIndex)
 {
     this->scene = importer.ReadFile(
         path,  // path of the file
@@ -439,8 +440,8 @@ void MyModel::loadModel(const char* path)
         return;
     }
 
-    aiMesh* mesh = scene->mMeshes[0];  // Assuming the model has at
-                                        // least one mesh
+    this->mesh = scene->mMeshes[meshIndex];  // Assuming the model has at
+                                             // least one mesh
     // Print the name of the mesh
     if (mesh->mName.length > 0) {
         std::cout << "Mesh Name: " << mesh->mName.C_Str()
@@ -650,7 +651,7 @@ struct MyImGui {
         std::unordered_map<std::string, bool>& openNodes,
         int level 
     );
-    void renderBoneHierarchy(const aiScene* scene);
+    void renderBoneHierarchy(const aiScene* scene, const aiMesh* mesh);
 };
 
 void MyImGui::init(vtx::VertexContext* ctx) const
@@ -800,14 +801,12 @@ void MyImGui::renderFrame() const
     }
 
     // Main function to render the ImGui window with the bone hierarchy
-    void MyImGui::renderBoneHierarchy(const aiScene* scene)
+    void MyImGui::renderBoneHierarchy(const aiScene* scene, const aiMesh* mesh)
     {
         if (ImGui::Begin(
                 "Bone Hierarchy", nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize
             )) {
-            // NOTICE: Same assumption is done in MyModel::loadModel()
-            aiMesh* mesh = scene->mMeshes[0];
 
             if (mesh->mNumBones > 0) {
                 // Start from the root node of the scene
@@ -858,7 +857,7 @@ glm::mat4 modelToWorld = glm::mat4(1.0f);  // Identity matrix
 void vtx::init(vtx::VertexContext* ctx)
 {
     // GLB file contains normals, but Blender not
-    usr.human.loadModel("./assets/human.glb");
+    usr.human.loadModel("./assets/human.glb", 0);
     usr.human.init();
     usr.gizmo.init();
     usr.imgui.init(ctx);
@@ -919,7 +918,7 @@ void vtx::loop(vtx::VertexContext* ctx)
         &modelToWorld, "Model-to-World for human"
     );
     usr.imgui.showMatrixEditor(&cameraMatrix, "Camera matrix");
-    usr.imgui.renderBoneHierarchy(usr.human.scene);
+    usr.imgui.renderBoneHierarchy(usr.human.scene, usr.human.mesh);
 
     usr.imgui.renderFrame();  // ------------------------
 
