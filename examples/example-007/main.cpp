@@ -20,7 +20,7 @@
 
 struct Gizmo;
 struct MyVertex;
-struct MyModel;
+struct MyMesh;
 struct MyImGui;
 struct UserContext;
 void vtx::init(vtx::VertexContext* ctx);
@@ -232,7 +232,7 @@ struct MyVertex {
     float bones[4] = {-1, -1, -1, -1};
 };
 
-struct MyModel {
+struct MyMesh {
     static const char* MODEL_VERTEX_SHADER;
     static const char* MODEL_FRAGMENT_SHADER;
 
@@ -259,7 +259,7 @@ struct MyModel {
     void draw() const;
 };
 
-const char* MyModel::MODEL_VERTEX_SHADER =
+const char* MyMesh::MODEL_VERTEX_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
@@ -332,7 +332,7 @@ const char* MyModel::MODEL_VERTEX_SHADER =
 	}
 	)";
 
-const char* MyModel::MODEL_FRAGMENT_SHADER =
+const char* MyMesh::MODEL_FRAGMENT_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
@@ -367,7 +367,7 @@ const char* MyModel::MODEL_FRAGMENT_SHADER =
     }
     )";
 
-void MyModel::init()
+void MyMesh::init()
 {
     // Create VAO
     glGenVertexArrays(1, &modelVAO);
@@ -424,7 +424,7 @@ void MyModel::init()
     );
 }
 
-void MyModel::loadModel(const char* path, const int meshIndex)
+void MyMesh::loadModel(const char* path, const int meshIndex)
 {
     this->scene = importer.ReadFile(
         path,  // path of the file
@@ -562,7 +562,7 @@ void MyModel::loadModel(const char* path, const int meshIndex)
 }
 
 
-void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
+void MyMesh::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
 {
     glUseProgram(this->defaultShader);
 
@@ -576,7 +576,7 @@ void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix) const
     );
 }
 
-void MyModel::updateTransformationMatrix(const glm::mat4 transformationMatrix
+void MyMesh::updateTransformationMatrix(const glm::mat4 transformationMatrix
 ) const
 {
     glUseProgram(this->defaultShader);
@@ -591,7 +591,7 @@ void MyModel::updateTransformationMatrix(const glm::mat4 transformationMatrix
     );
 }
 
-void MyModel::updateViewMatrix(const glm::mat4 viewMatrix) const
+void MyMesh::updateViewMatrix(const glm::mat4 viewMatrix) const
 {
     glUseProgram(this->defaultShader);
 
@@ -605,7 +605,7 @@ void MyModel::updateViewMatrix(const glm::mat4 viewMatrix) const
     );
 }
 
-void MyModel::updateSelectedJointIndex(GLuint selectedBoneIndex) const
+void MyMesh::updateSelectedJointIndex(GLuint selectedBoneIndex) const
 {
     glUseProgram(this->defaultShader);
     glUniform1ui(
@@ -616,7 +616,7 @@ void MyModel::updateSelectedJointIndex(GLuint selectedBoneIndex) const
     );
 }
 
-void MyModel::draw() const
+void MyMesh::draw() const
 {
     // Draw using default shader
     glUseProgram(this->defaultShader);
@@ -836,7 +836,7 @@ void MyImGui::renderFrame() const
 
 struct UserContext {
     Gizmo gizmo;
-    MyModel human;
+    MyMesh human;
     MyImGui imgui;
 };
 

@@ -211,7 +211,7 @@ typedef struct {
     } normal;
 } MyVertex;
 
-struct MyModel {
+struct MyMesh {
     static const char* MODEL_VERTEX_SHADER;
     static const char* MODEL_FRAGMENT_SHADER;
 
@@ -271,7 +271,7 @@ struct MyModel {
         );
     }
 
-    void loadModel(const char* path)
+    void loadMesh(const char* path)
     {
         Assimp::Importer importer;
         const aiScene* scene = importer.ReadFile(
@@ -433,7 +433,7 @@ struct MyModel {
     }
 };
 // == MyModel impl ==
-const char* MyModel::MODEL_VERTEX_SHADER =
+const char* MyMesh::MODEL_VERTEX_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
@@ -472,7 +472,7 @@ const char* MyModel::MODEL_VERTEX_SHADER =
 	}
 	)";
 
-const char* MyModel::MODEL_FRAGMENT_SHADER =
+const char* MyMesh::MODEL_FRAGMENT_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
@@ -511,7 +511,7 @@ const char* MyModel::MODEL_FRAGMENT_SHADER =
 
 typedef struct {
     Gizmo gizmo;
-    MyModel monkey;
+    MyMesh monkey;
 } UserContext;
 
 UserContext usr;
@@ -531,7 +531,7 @@ glm::mat4 modelToWorld = glm::mat4(1.0f);  // Identity matrix
 void vtx::init(vtx::VertexContext* ctx)
 {
     // GLB file contains normals, but Blender not
-    usr.monkey.loadModel("./assets/red-monkey.glb");
+    usr.monkey.loadMesh("./assets/red-monkey.glb");
     usr.monkey.init();
     usr.gizmo.init();
 

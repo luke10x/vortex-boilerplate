@@ -22,7 +22,7 @@
 
 struct Gizmo;
 struct MyVertex;
-struct MyModel;
+struct MyMesh;
 struct MyImGui;
 struct UserContext;
 void vtx::init(vtx::VertexContext* ctx);
@@ -237,7 +237,7 @@ struct MyVertex {
     float weights[4] = {0.0f};
 };
 
-struct MyModel {
+struct MyMesh {
     static const char* MODEL_VERTEX_SHADER;
     static const char* MODEL_FRAGMENT_SHADER;
 
@@ -259,7 +259,7 @@ struct MyModel {
     Assimp::Importer importer;
 
     void init();
-    void loadModel(const char* path);
+    void loadMesh(const char* path);
     void updateProjectionMatrix(const glm::mat4 projectionMatrix) const;
     void updateTransformationMatrix(const glm::mat4 transformationMatrix
     ) const;
@@ -271,7 +271,7 @@ struct MyModel {
     void draw() const;
 };
 
-const char* MyModel::MODEL_VERTEX_SHADER =
+const char* MyMesh::MODEL_VERTEX_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
@@ -365,7 +365,7 @@ const char* MyModel::MODEL_VERTEX_SHADER =
 	}
 	)";
 
-const char* MyModel::MODEL_FRAGMENT_SHADER =
+const char* MyMesh::MODEL_FRAGMENT_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
@@ -401,7 +401,7 @@ const char* MyModel::MODEL_FRAGMENT_SHADER =
     }
     )";
 
-void MyModel::init()
+void MyMesh::init()
 {
     // Create VAO
     glGenVertexArrays(1, &modelVAO);
@@ -457,7 +457,7 @@ void MyModel::init()
     );
 }
 
-void MyModel::loadModel(const char* path)
+void MyMesh::loadMesh(const char* path)
 {
     this->scene = importer.ReadFile(
         path,  // path of the file
@@ -593,7 +593,7 @@ void MyModel::loadModel(const char* path)
     std::cerr << "indices: " << indices.size() << std::endl;
 }
 
-void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix
+void MyMesh::updateProjectionMatrix(const glm::mat4 projectionMatrix
 ) const
 {
     glUseProgram(this->defaultShader);
@@ -608,7 +608,7 @@ void MyModel::updateProjectionMatrix(const glm::mat4 projectionMatrix
     );
 }
 
-void MyModel::updateTransformationMatrix(
+void MyMesh::updateTransformationMatrix(
     const glm::mat4 transformationMatrix
 ) const
 {
@@ -624,7 +624,7 @@ void MyModel::updateTransformationMatrix(
     );
 }
 
-void MyModel::updateViewMatrix(const glm::mat4 viewMatrix) const
+void MyMesh::updateViewMatrix(const glm::mat4 viewMatrix) const
 {
     glUseProgram(this->defaultShader);
 
@@ -638,7 +638,7 @@ void MyModel::updateViewMatrix(const glm::mat4 viewMatrix) const
     );
 }
 
-void MyModel::updateSelectedJointIndex(GLuint selectedBoneIndex) const
+void MyMesh::updateSelectedJointIndex(GLuint selectedBoneIndex) const
 {
     glUseProgram(this->defaultShader);
     glUniform1ui(
@@ -652,7 +652,7 @@ void MyModel::updateSelectedJointIndex(GLuint selectedBoneIndex) const
 /*
  * Populates one element to boneTransformation matrices array
  */
-void MyModel::updateBoneTransform(
+void MyMesh::updateBoneTransform(
     const glm::mat4* boneTransform,
     int count
 ) const
@@ -672,7 +672,7 @@ void MyModel::updateBoneTransform(
     );
 }
 
-void MyModel::draw() const
+void MyMesh::draw() const
 {
     // Draw using default shader
     glUseProgram(this->defaultShader);
@@ -894,7 +894,7 @@ void MyImGui::renderBoneHierarchy(
 
 struct UserContext {
     Gizmo gizmo;
-    MyModel human;
+    MyMesh human;
     MyImGui imgui;
     AnimationMixerControls amc;
 };
@@ -916,7 +916,7 @@ glm::mat4 modelToWorld = glm::mat4(1.0f);  // Identity matrix
 void vtx::init(vtx::VertexContext* ctx)
 {
     // GLB file contains normals, but Blender not
-    usr.human.loadModel("./assets/human.glb");
+    usr.human.loadMesh("./assets/human.glb");
     usr.human.init();
     usr.gizmo.init();
     usr.imgui.init(ctx);

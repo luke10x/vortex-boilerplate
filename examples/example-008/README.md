@@ -1,9 +1,7 @@
 Rigged Human
 ============
 
-Example with skinned human.
+Example with fully blended animations.
 
-This example shows color heat based on how much
-selected bone affects body vertices.
-
-Uses shader to make it work.
+Works with Blender GLB exports,
+plays and blends animations.

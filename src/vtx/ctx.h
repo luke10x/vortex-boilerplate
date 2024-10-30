@@ -1,3 +1,5 @@
+#pragma once
+
 #include <GL/glew.h>
 #ifdef __USE_SDL
 #include <SDL2/SDL.h>
@@ -17,8 +19,10 @@
 // Screen dimensions
 // const int SCREEN_WIDTH  = 400;
 // const int SCREEN_HEIGHT = 300;
-const int SCREEN_WIDTH  = 854;
-const int SCREEN_HEIGHT = 480;
+// const int SCREEN_WIDTH  = 854;
+// const int SCREEN_HEIGHT = 480;
+const int SCREEN_HEIGHT  = 854;
+const int SCREEN_WIDTH = 480;
 
 // *******************************
 //  Declarations of all functions
