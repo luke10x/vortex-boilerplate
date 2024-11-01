@@ -1,9 +1,5 @@
-Rigged Human
-============
+Textured meshes
+===============
 
-Example with skinned human.
-
-This example shows color heat based on how much
-selected bone affects body vertices.
-
-Uses shader to make it work.
+Loads texture test model consisting of several
+meshes, each having their diffusion texture.
