@@ -18,6 +18,186 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
+struct Hud {
+    static const char* HUD_VERTEX_SHADER;
+    static const char* HUD_FRAGMENT_SHADER;
+
+    GLuint hudVAO;
+    GLuint hudShaderId;
+    GLuint hudTextureId;
+
+    void initHud() {
+        // Define vertices in NDC space (-1.0 to 1.0 range)
+        // clang-format off
+        static constexpr GLfloat hudVertices[] = {
+            // Positions     // TexCoords
+            -1.0f, -1.0f,    0.0f, 0.0f, // Bottom-left
+            1.0f, -1.0f,     1.0f, 0.0f, // Bottom-right
+            1.0f,  1.0f,     1.0f, 1.0f, // Top-right
+
+            -1.0f, -1.0f,    0.0f, 0.0f, // Bottom-left
+            1.0f,  1.0f,     1.0f, 1.0f, // Top-right
+            -1.0f,  1.0f,    0.0f, 1.0f  // Top-left
+        };
+        // clang-format on
+
+        glGenVertexArrays(1, &this->hudVAO);
+        glBindVertexArray(this->hudVAO);
+
+        // Create a vertex buffer for gizmo
+        GLuint hudVBO;
+        glGenBuffers(1, &hudVBO);
+        glBindBuffer(GL_ARRAY_BUFFER, hudVBO);
+        glBufferData(
+            GL_ARRAY_BUFFER, sizeof(hudVertices), hudVertices,
+            GL_STATIC_DRAW
+        );
+        // Enable vertex attribute and bind it to shader location
+        // clang-format off
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*) 0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*) (2 * sizeof(GLfloat)));
+        // clang-format on
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+
+        glBindVertexArray(0);                      // VAO
+        glBindBuffer(GL_ARRAY_BUFFER, 0);          // VBO
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);  // EBO
+
+        this->hudShaderId = vtx::createShaderProgram(
+            HUD_VERTEX_SHADER, HUD_FRAGMENT_SHADER
+        );
+    }
+
+    void resizeHud(float screenX, float screenY, float width, float height) {
+        glm::vec2 hudPosition(screenX, screenY); // Position in screen coordinates
+        glm::vec2 hudSize(width, height);        // Size in screen coordinates
+
+        // Create model matrix for HUD element positioning and scaling
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(hudPosition, 0.0f)); // Position on screen
+        model = glm::scale(model, glm::vec3(hudSize, 1.0f));         // Scale to desired size
+        
+        glUseProgram(this->hudShaderId);
+        glUniformMatrix4fv(
+            glGetUniformLocation(this->hudShaderId, "u_projection"),
+            1,
+            GL_FALSE,
+            glm::value_ptr(model)
+        );
+    }
+
+    void drawHud() {
+        // Define the HUD element's screen position and size
+        glm::vec2 hudPosition(50.0f, 50.0f); // Position in pixels from bottom-left
+        glm::vec2 hudSize(100.0f, 100.0f);   // Size in pixels
+
+        // Create the model matrix for this HUD element
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(hudPosition, 0.0f)); // Move to desired screen position
+        model = glm::scale(model, glm::vec3(hudSize, 1.0f));         // Scale to desired size
+
+        // Send the model and projection matrices to the shader
+        glUseProgram(this->hudShaderId);
+        glUniformMatrix4fv(
+            glGetUniformLocation(this->hudShaderId, "u_model"),
+            1,
+            GL_FALSE,
+            glm::value_ptr(model)
+        );
+
+        // Bind VAO and draw the HUD element
+        glBindVertexArray(this->hudVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6); // Draw quad for the HUD element
+        glBindVertexArray(0);
+
+    }
+
+    void updateHudTexture(GLuint textureId) {
+        glUseProgram(this->hudShaderId);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureId);
+        glUniform1i(glGetUniformLocation(this->hudShaderId, "u_hudTexture"), 0); // Texture unit 0
+    }
+
+};
+
+GLuint createTexture(const char* texturePath) {
+    GLuint hudTexture;
+    int width, height, nrChannels;
+    stbi_set_flip_vertically_on_load(1); // Enable vertical flip
+    unsigned char *data = stbi_load(texturePath, &width, &height, &nrChannels, 0);
+    stbi_set_flip_vertically_on_load(0); // Reset to default after loading
+
+std::cerr << "stbi loaded " << texturePath << " " << width << "x" << height <<  std::endl;
+    glGenTextures(1, &hudTexture);
+    glBindTexture(GL_TEXTURE_2D, hudTexture);
+
+    // Set texture parameters for wrapping and filtering
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Upload texture data
+    if (data) {
+        
+std::cerr << "dataexists " << std::endl;
+        GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        stbi_image_free(data); // Free image data after loading to GPU
+    } else {
+        std::cerr << "Failed to load texture" << std::endl;
+    }
+
+    return hudTexture;
+std::cerr << "nr channels " << nrChannels << std::endl;
+}
+
+const char* Hud::HUD_VERTEX_SHADER =
+#ifdef __EMSCRIPTEN__
+    "#version 300 es"
+#else
+    "#version 330 core"
+#endif
+    R"(
+	precision mediump float;
+    layout (location = 0) in vec2 a_position;
+    layout (location = 1) in vec2 a_texCoords;
+
+    uniform mat4 u_projection;
+    uniform mat4 u_model;
+
+    out vec2 v_texCoords;
+
+    void main()
+    {
+        v_texCoords = a_texCoords;
+        gl_Position = //u_projection * u_model * 
+        vec4(a_position, 0.0, 1.0);
+    }
+    )";
+
+
+const char* Hud::HUD_FRAGMENT_SHADER =
+#ifdef __EMSCRIPTEN__
+    "#version 300 es"
+#else
+    "#version 330 core"
+#endif
+    R"(
+    in vec2 v_texCoords;
+
+    uniform sampler2D u_hudTexture;
+
+    out vec4 fragColor;
+
+    void main()
+    {
+        fragColor = texture(u_hudTexture, v_texCoords);
+    }
+    )";
 
 typedef struct {
     struct {
@@ -559,12 +739,13 @@ typedef struct {
     MyMesh cubeTop;
     MyMesh cubeBody;
     MyImGui imgui;
+    Hud hud;
 } UserContext;
 
 UserContext usr;
 
 // Create the camera matrix
-glm::vec3 cameraPosition(-0.5f, 4.0f, 0.5f);
+glm::vec3 cameraPosition(-0.25f, 3.0f, 0.25f);
 glm::vec3 targetPosition(1.5f, 1.6f, -1.5f);
 glm::vec3 upDirection(0.0f, 1.0f, 0.0f);
 glm::mat4 cameraMatrix = glm::lookAt(
@@ -588,6 +769,12 @@ void vtx::init(vtx::VertexContext* ctx)
     usr.cubeBody.init();
 
     usr.imgui.init(ctx);
+
+    GLuint heartTextureId = createTexture("./assets/heart.png");
+    usr.hud.hudTextureId = heartTextureId;
+    usr.hud.initHud();
+    usr.hud.resizeHud(0, 0, ctx->screenWidth, ctx->screenHeight);
+    usr.hud.updateHudTexture(heartTextureId);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -617,6 +804,12 @@ void vtx::loop(vtx::VertexContext* ctx)
         if (event.type == SDL_QUIT) {
             vtx::exitVortex();
             return;
+        }
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+            // screenWidth = event.window.data1;
+            // screenHeight = event.window.data2;
+            // orthoProjection = glm::ortho(0.0f, screenWidth, screenHeight, 0.0f, -1.0f, 1.0f);
+            // glViewport(0, 0, screenWidth, screenHeight); // Update viewport
         }
         if (event.type == SDL_KEYDOWN) {
             if (event.key.keysym.sym == SDLK_ESCAPE) {
@@ -659,6 +852,9 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.cubeBody.updateDiffuseTexture(usr.cubeBody.diffuseTextureId
     );  // ok it is time to exract shader
     usr.cubeBody.draw();
+
+    usr.hud.updateHudTexture(usr.hud.hudTextureId);
+    usr.hud.drawHud();
 
     usr.imgui.newFrame();
     usr.imgui.showMatrixEditor(

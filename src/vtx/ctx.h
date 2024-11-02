@@ -44,7 +44,7 @@ static GLuint compileShader(GLenum type, const char* source);
 // 3. OpenGL diagnostic utils
 
 static void printShaderVersions();
-static void checkOpenGLError();
+static void checkOpenGLError(const char* optionalTag);
 
 // 4. Main loop subsystem
 
@@ -278,11 +278,11 @@ static void printShaderVersions()
     printf("Renderer: %s\n", renderer);
 }
 
-static void checkOpenGLError()
+static void checkOpenGLError(const char* optionalTag = "")
 {
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        std::cerr << "OpenGL error: " << err << std::endl;
+        std::cerr << optionalTag << "OpenGL error: " << err << std::endl;
         exit(1);
     }
 }

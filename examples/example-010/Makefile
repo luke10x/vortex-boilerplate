@@ -6,6 +6,8 @@ all:
 	blender -b ../assets/test/texture-test.blend -o assets/texture-test.glb --python-expr \
 		"import bpy; bpy.ops.export_scene.gltf(filepath='assets/texture-test.glb', export_yup="True")"
 	
+	cp ../assets/sprites/heart.png assets/heart.png
+
 	cd ../.. && make clean build APP_ROOT=$(PWD) CXXFLAGS_EXTRA="${CXXFLAGS_EXTRA}"
 
 ifeq ($(NATIVE),1)
