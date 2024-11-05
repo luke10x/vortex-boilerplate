@@ -25,6 +25,56 @@ struct Line {
     static const char* LINE_VERTEX_SHADER;
     static const char* LINE_FRAGMENT_SHADER;
 
+    GLuint lineVAO;
+    GLuint lineShaderId;
+
+    void initLine() {
+        float lineVertices[] = {
+            // Line 1
+            -10.5f, 10.5f, 0.0f,  // Start point
+            0.5f, 0.5f, 0.0f,  // End point
+            // Line 2
+            -0.5f, -0.5f, 0.0f,
+            0.5f, -0.5f, 0.0f,
+            // Add more lines as needed
+        };
+        GLuint VAO, VBO;
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(lineVertices), lineVertices, GL_STATIC_DRAW);
+
+        // Enable the vertex attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0); 
+        glBindVertexArray(0);
+        this->lineVAO = VAO;
+        this->lineShaderId = vtx::createShaderProgram(
+            LINE_VERTEX_SHADER, LINE_FRAGMENT_SHADER
+        );
+        // glLineWidth(2.0f);
+    }
+
+    void renderTheLines(const glm::mat4 view, const glm::mat4 projection, const glm::mat4 model) {
+        glUseProgram(this->lineShaderId); // Use your shader program
+
+        // Set your transformation uniforms
+        glUniformMatrix4fv(glGetUniformLocation(this->lineShaderId, "uProjection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(glGetUniformLocation(this->lineShaderId, "uView"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(this->lineShaderId, "uModel"), 1, GL_FALSE, glm::value_ptr(model));
+
+        // Set line colour
+        glUniform4f(glGetUniformLocation(this->lineShaderId, "uColor"), 1.0f, 0.0f, 0.0f, 1.0f); // Red
+
+        glBindVertexArray(this->lineVAO);
+
+        glDrawArrays(GL_LINES, 0, 4); // Number of vertices in your lines
+        glBindVertexArray(0);
+    }
 };
 
 const char* Line::LINE_VERTEX_SHADER =
@@ -34,15 +84,33 @@ const char* Line::LINE_VERTEX_SHADER =
     "#version 330 core"
 #endif
     R"(
+    precision mediump float;
+
+    layout(location = 0) in vec3 aPos; // Vertex position
+    uniform mat4 uProjection;
+    uniform mat4 uView;
+    uniform mat4 uModel;
+
+    void main() {
+        gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
+    }
     )";
 
-const char* Line::LINE_VERTEX_SHADER =
+const char* Line::LINE_FRAGMENT_SHADER =
 #ifdef __EMSCRIPTEN__
     "#version 300 es"
 #else
     "#version 330 core"
 #endif
     R"(
+    precision mediump float;
+
+    out vec4 FragColor;
+    uniform vec4 uColor;
+
+    void main() {
+        FragColor = uColor; // Colour for the line
+    }
     )";
 
 
@@ -586,7 +654,7 @@ typedef struct {
     MyMesh cubeTop;
     MyMesh cubeBody;
     MyImGui imgui;
-    Line axisX;
+    Line redLine;
 } UserContext;
 
 UserContext usr;
@@ -636,6 +704,8 @@ void vtx::init(vtx::VertexContext* ctx)
 
     usr.cubeTop.updateProjectionMatrix(projectionMatrix);
     usr.cubeBody.updateProjectionMatrix(projectionMatrix);
+
+    usr.redLine.initLine();
 }
 
 void vtx::loop(vtx::VertexContext* ctx)
@@ -691,17 +761,23 @@ void vtx::loop(vtx::VertexContext* ctx)
     );  // ok it is time to exract shader
     usr.cubeBody.draw();
 
-    glm::mat4 projection = glm::ortho(
-        0.0f,  // Left bound of the screen
-        static_cast<float>(ctx->screenWidth
-        ),  // Right bound, based on screen width
-        static_cast<float>(ctx->screenHeight
-        ),      // Bottom bound, based on screen height
-        0.0f,   // Top bound (top-left origin)
-        -1.0f,  // Near clipping plane
-        1.0f    // Far clipping plane
-    );
+    // Figure projection matrix
+    float fov       = glm::radians(45.0f);  // Field of view in radians
+    float nearPlane = 0.1f;    // Distance to the near clipping plane
+    float farPlane  = 100.0f;  // Distance to the far clipping plane
+    // Actually, this needs to be recalculated in the loop,
+    // as window could be resized at any time by user
+    float aspectRatio =
+        (float) ctx->screenWidth / (float) ctx->screenHeight;
 
+    // But, here is the initials perspective matrix
+    glm::mat4 projectionMatrix =
+        glm::perspective(fov, aspectRatio, nearPlane, farPlane);
+    usr.redLine.renderTheLines(
+        cameraMatrix,
+        projectionMatrix,
+        glm::mat4(1.0f)
+    );
     usr.imgui.newFrame();
     usr.imgui.showMatrixEditor(
         &modelToWorld, "Model-to-World for mesh"
