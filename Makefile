@@ -7,7 +7,7 @@ CXXFLAGS += -D__USE_SDL
 #CXXFLAGS += -D__USE_GLFW
 CXXFLAGS += -I./external/glm
 CXXFLAGS += -I./external/SDL/include
-CXXFLAGS += -I ./external/assimp/contrib/stb/
+CXXFLAGS += -I ./external/stb/
 LDLIBS += -lassimp -lz 
 
 ifeq ($(NATIVE),1)

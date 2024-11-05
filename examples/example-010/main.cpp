@@ -6,7 +6,8 @@
 #include <assimp/Importer.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <fstream>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -18,6 +19,278 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
+#include "stb_truetype.h"
+
+struct Text {
+    static const char* TEXT_VERTEX_SHADER;
+    static const char* TEXT_FRAGMENT_SHADER;
+    struct Character {
+        float x0, y0, x1, y1;  // texture coordinates
+        float xoff, yoff;      // offset to start of character
+        float advance;         // distance to the next character
+    };
+
+    const int ATLAS_WIDTH  = 512;
+    const int ATLAS_HEIGHT = 512;
+    const float FONT_SIZE  = 32.0f;
+
+    GLuint fontTexture;
+    Character characters[128];
+    GLuint textShaderId;
+
+    void loadFont(const char* fontPath)
+    {
+        // Load font file
+        std::ifstream fontFile(
+            fontPath, std::ios::binary | std::ios::ate
+        );
+        if (!fontFile.is_open()) {
+            std::cerr << "Failed to open font file." << std::endl;
+            return;
+        }
+        size_t fileSize = fontFile.tellg();
+        std::vector<unsigned char> fontBuffer(fileSize);
+        fontFile.seekg(0);
+        fontFile.read((char*) fontBuffer.data(), fileSize);
+
+        // Initialize stb_truetype
+        stbtt_fontinfo fontInfo;
+        if (!stbtt_InitFont(&fontInfo, fontBuffer.data(), 0)) {
+            std::cerr << "Failed to initialize font." << std::endl;
+            return;
+        }
+
+        // Allocate atlas and bitmap
+        unsigned char atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
+        std::memset(atlas, 0, sizeof(atlas));
+        int atlasX = 0, atlasY = 0;
+        int maxRowHeight = 0;
+
+        // Create each character bitmap and copy it to the atlas
+        for (unsigned char c = 32; c < 128; ++c) {  // ASCII 32-127
+            int w, h, xoff, yoff;
+            unsigned char* bitmap = stbtt_GetCodepointBitmap(
+                &fontInfo, 0,
+                stbtt_ScaleForPixelHeight(&fontInfo, FONT_SIZE), c, &w,
+                &h, &xoff, &yoff
+            );
+
+            // Check if character fits in the current row
+            if (atlasX + w >= ATLAS_WIDTH) {
+                atlasX = 0;
+                atlasY += maxRowHeight;
+                maxRowHeight = 0;
+            }
+
+            // Copy character bitmap to atlas
+            for (int row = 0; row < h; ++row) {
+                for (int col = 0; col < w; ++col) {
+                    atlas
+                        [(atlasY + row) * ATLAS_WIDTH +
+                         (atlasX + col)] = bitmap[row * w + col];
+                }
+            }
+
+            // Store character metadata
+            characters[c].x0   = atlasX / (float) ATLAS_WIDTH;
+            characters[c].y0   = atlasY / (float) ATLAS_HEIGHT;
+            characters[c].x1   = (atlasX + w) / (float) ATLAS_WIDTH;
+            characters[c].y1   = (atlasY + h) / (float) ATLAS_HEIGHT;
+            characters[c].xoff = (float) xoff;
+            characters[c].yoff = (float) yoff;
+            int advanceWidth, leftSideBearing;
+            stbtt_GetCodepointHMetrics(
+                &fontInfo, c, &advanceWidth, &leftSideBearing
+            );
+
+            // Then scale the advance width by the font size scale
+            characters[c].advance =
+                advanceWidth *
+                stbtt_ScaleForPixelHeight(&fontInfo, FONT_SIZE);
+            characters[c].advance =
+                advanceWidth *
+                stbtt_ScaleForPixelHeight(&fontInfo, FONT_SIZE);
+
+            atlasX += w;
+            maxRowHeight = std::max(maxRowHeight, h);
+
+            stbtt_FreeBitmap(bitmap, nullptr);
+        }
+
+        // Create OpenGL texture for the font atlas
+        glGenTextures(1, &fontTexture);
+        glBindTexture(GL_TEXTURE_2D, fontTexture);
+        glTexImage2D(
+            GL_TEXTURE_2D, 0, GL_RED, ATLAS_WIDTH, ATLAS_HEIGHT, 0,
+            GL_RED, GL_UNSIGNED_BYTE, atlas
+        );
+        glTexParameteri(
+            GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR
+        );
+        glTexParameteri(
+            GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR
+        );
+    }
+    GLuint VAO, VBO;
+
+    void setupTextRendering()
+    {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        // Each character quad requires 6 vertices with 4 attributes
+        // (position and tex coords)
+        glBufferData(
+            GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL,
+            GL_DYNAMIC_DRAW
+        );
+
+        // Vertex positions (layout location 0)
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(
+            0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*) 0
+        );
+
+        // Texture coordinates (layout location 1)
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(
+            1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+            (void*) (2 * sizeof(float))
+        );
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+        this->textShaderId = vtx::createShaderProgram(
+            TEXT_VERTEX_SHADER, TEXT_FRAGMENT_SHADER
+        );
+    }
+
+    void renderText(
+        const std::string& text,
+        float x,
+        float y,
+        float scale,
+        glm::vec3 color,
+        GLuint shader,
+        const glm::mat4& projection
+    )
+    {
+        // Activate shader and set uniforms
+        glUseProgram(shader);
+        glUniform3f(
+            glGetUniformLocation(shader, "textColor"), color.x, color.y,
+            color.z
+        );
+        glUniformMatrix4fv(
+            glGetUniformLocation(shader, "projection"), 1, GL_FALSE,
+            &projection[0][0]
+        );
+        glUniform1i(glGetUniformLocation(shader, "fontTexture"), 0);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, fontTexture);
+
+        glBindVertexArray(VAO);
+
+        // Iterate through each character in the string
+        for (char c : text) {
+            Character ch = characters[c];
+
+            // Calculate position and size of the character quad
+            float xpos = x + ch.xoff * scale;
+            float ypos =
+                y - (ch.yoff + (ch.y1 - ch.y0) * ATLAS_HEIGHT) * scale;
+            float w = (ch.x1 - ch.x0) * ATLAS_WIDTH * scale;
+            float h = (ch.y1 - ch.y0) * ATLAS_HEIGHT * scale;
+
+            // Update VBO for the character quad
+            float vertices[6][4] = {
+                {xpos,     ypos + h, ch.x0, ch.y1},
+                {xpos,     ypos,     ch.x0, ch.y0},
+                {xpos + w, ypos,     ch.x1, ch.y0},
+
+                {xpos,     ypos + h, ch.x0, ch.y1},
+                {xpos + w, ypos,     ch.x1, ch.y0},
+                {xpos + w, ypos + h, ch.x1, ch.y1}
+            };
+
+            // Update VBO memory
+            glBindBuffer(GL_ARRAY_BUFFER, VBO);
+            glBufferSubData(
+                GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices
+            );
+
+            // Render the character quad
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            // Advance the cursor to the start position of the next
+            // character
+            x += ch.advance * scale;
+        }
+
+        glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    // Calculates the width in pixels of a given string based on
+    // character advances
+    float getTextWidth(const std::string& text, float scale)
+    {
+        float width = 0.0f;
+
+        // Loop through each character in the string
+        for (char c : text) {
+            Character ch = characters[c];  // Assuming 'characters' is
+                                           // your character data map
+
+            // Add the advance (scaled) to the total width
+            width += ch.advance * scale;
+        }
+
+        return width;
+    }
+};
+
+const char* Text::TEXT_VERTEX_SHADER =
+#ifdef __EMSCRIPTEN__
+    "#version 300 es"
+#else
+    "#version 330 core"
+#endif
+    R"(
+    layout(location = 0) in vec2 position;
+    layout(location = 1) in vec2 texCoord;
+
+    uniform mat4 projection;
+    out vec2 TexCoord;
+
+    void main() {
+        gl_Position = projection * vec4(position, 0.0, 1.0);
+        TexCoord = texCoord;
+    }
+    )";
+
+const char* Text::TEXT_FRAGMENT_SHADER =
+#ifdef __EMSCRIPTEN__
+    "#version 300 es"
+#else
+    "#version 330 core"
+#endif
+    R"(
+    precision mediump float;
+
+    in vec2 TexCoord;
+    uniform sampler2D fontTexture;
+    uniform vec3 textColor;
+    out vec4 FragColor;
+
+    void main() {
+        float alpha = texture(fontTexture, TexCoord).r;
+        FragColor = vec4(textColor, alpha); // White colour with alpha from texture
+    }
+    )";
 struct Hud {
     static const char* HUD_VERTEX_SHADER;
     static const char* HUD_FRAGMENT_SHADER;
@@ -26,7 +299,8 @@ struct Hud {
     GLuint hudShaderId;
     GLuint hudTextureId;
 
-    void initHud() {
+    void initHud()
+    {
         // Define vertices in NDC space (-1.0 to 1.0 range)
         // clang-format off
         static constexpr GLfloat hudVertices[] = {
@@ -69,67 +343,85 @@ struct Hud {
         );
     }
 
-    void resizeHud(float screenX, float screenY, float width, float height) {
-        glm::vec2 hudPosition(screenX, screenY); // Position in screen coordinates
-        glm::vec2 hudSize(width, height);        // Size in screen coordinates
+    void
+    resizeHud(float screenX, float screenY, float width, float height)
+    {
+        glm::vec2 hudPosition(
+            screenX, screenY
+        );  // Position in screen coordinates
+        glm::vec2 hudSize(width, height);  // Size in screen coordinates
 
         // Create model matrix for HUD element positioning and scaling
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(hudPosition, 0.0f)); // Position on screen
-        model = glm::scale(model, glm::vec3(hudSize, 1.0f));         // Scale to desired size
-        
+        model           = glm::translate(
+            model, glm::vec3(hudPosition, 0.0f)
+        );  // Position on screen
+        model = glm::scale(
+            model, glm::vec3(hudSize, 1.0f)
+        );  // Scale to desired size
+
         glUseProgram(this->hudShaderId);
         glUniformMatrix4fv(
-            glGetUniformLocation(this->hudShaderId, "u_projection"),
-            1,
-            GL_FALSE,
-            glm::value_ptr(model)
+            glGetUniformLocation(this->hudShaderId, "u_projection"), 1,
+            GL_FALSE, glm::value_ptr(model)
         );
     }
 
-    void drawHud() {
+    void drawHud()
+    {
         // Define the HUD element's screen position and size
-        glm::vec2 hudPosition(50.0f, 50.0f); // Position in pixels from bottom-left
-        glm::vec2 hudSize(100.0f, 100.0f);   // Size in pixels
+        glm::vec2 hudPosition(
+            50.0f, 50.0f
+        );  // Position in pixels from bottom-left
+        glm::vec2 hudSize(100.0f, 100.0f);  // Size in pixels
 
         // Create the model matrix for this HUD element
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(hudPosition, 0.0f)); // Move to desired screen position
-        model = glm::scale(model, glm::vec3(hudSize, 1.0f));         // Scale to desired size
+        model           = glm::translate(
+            model, glm::vec3(hudPosition, 0.0f)
+        );  // Move to desired screen position
+        model = glm::scale(
+            model, glm::vec3(hudSize, 1.0f)
+        );  // Scale to desired size
 
         // Send the model and projection matrices to the shader
         glUseProgram(this->hudShaderId);
         glUniformMatrix4fv(
-            glGetUniformLocation(this->hudShaderId, "u_model"),
-            1,
-            GL_FALSE,
-            glm::value_ptr(model)
+            glGetUniformLocation(this->hudShaderId, "u_model"), 1,
+            GL_FALSE, glm::value_ptr(model)
         );
 
         // Bind VAO and draw the HUD element
         glBindVertexArray(this->hudVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 6); // Draw quad for the HUD element
+        glDrawArrays(
+            GL_TRIANGLES, 0, 6
+        );  // Draw quad for the HUD element
         glBindVertexArray(0);
-
     }
 
-    void updateHudTexture(GLuint textureId) {
+    void updateHudTexture(GLuint textureId)
+    {
         glUseProgram(this->hudShaderId);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureId);
-        glUniform1i(glGetUniformLocation(this->hudShaderId, "u_hudTexture"), 0); // Texture unit 0
+        glUniform1i(
+            glGetUniformLocation(this->hudShaderId, "u_hudTexture"), 0
+        );  // Texture unit 0
     }
-
 };
 
-GLuint createTexture(const char* texturePath) {
+GLuint createTexture(const char* texturePath)
+{
     GLuint hudTexture;
     int width, height, nrChannels;
-    stbi_set_flip_vertically_on_load(1); // Enable vertical flip
-    unsigned char *data = stbi_load(texturePath, &width, &height, &nrChannels, 0);
-    stbi_set_flip_vertically_on_load(0); // Reset to default after loading
+    stbi_set_flip_vertically_on_load(1);  // Enable vertical flip
+    unsigned char* data =
+        stbi_load(texturePath, &width, &height, &nrChannels, 0);
+    stbi_set_flip_vertically_on_load(0
+    );  // Reset to default after loading
 
-std::cerr << "stbi loaded " << texturePath << " " << width << "x" << height <<  std::endl;
+    std::cerr << "stbi loaded " << texturePath << " " << width << "x"
+              << height << std::endl;
     glGenTextures(1, &hudTexture);
     glBindTexture(GL_TEXTURE_2D, hudTexture);
 
@@ -141,18 +433,20 @@ std::cerr << "stbi loaded " << texturePath << " " << width << "x" << height <<  
 
     // Upload texture data
     if (data) {
-        
-std::cerr << "dataexists " << std::endl;
+        std::cerr << "dataexists " << std::endl;
         GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(
+            GL_TEXTURE_2D, 0, format, width, height, 0, format,
+            GL_UNSIGNED_BYTE, data
+        );
         glGenerateMipmap(GL_TEXTURE_2D);
-        stbi_image_free(data); // Free image data after loading to GPU
+        stbi_image_free(data);  // Free image data after loading to GPU
     } else {
         std::cerr << "Failed to load texture" << std::endl;
     }
 
     return hudTexture;
-std::cerr << "nr channels " << nrChannels << std::endl;
+    std::cerr << "nr channels " << nrChannels << std::endl;
 }
 
 const char* Hud::HUD_VERTEX_SHADER =
@@ -178,7 +472,6 @@ const char* Hud::HUD_VERTEX_SHADER =
         vec4(a_position, 0.0, 1.0);
     }
     )";
-
 
 const char* Hud::HUD_FRAGMENT_SHADER =
 #ifdef __EMSCRIPTEN__
@@ -740,6 +1033,7 @@ typedef struct {
     MyMesh cubeBody;
     MyImGui imgui;
     Hud hud;
+    Text text;
 } UserContext;
 
 UserContext usr;
@@ -770,8 +1064,11 @@ void vtx::init(vtx::VertexContext* ctx)
 
     usr.imgui.init(ctx);
 
+    usr.text.loadFont("./assets/04b03.ttf");
+    usr.text.setupTextRendering();
+
     GLuint heartTextureId = createTexture("./assets/heart.png");
-    usr.hud.hudTextureId = heartTextureId;
+    usr.hud.hudTextureId  = heartTextureId;
     usr.hud.initHud();
     usr.hud.resizeHud(0, 0, ctx->screenWidth, ctx->screenHeight);
     usr.hud.updateHudTexture(heartTextureId);
@@ -805,11 +1102,8 @@ void vtx::loop(vtx::VertexContext* ctx)
             vtx::exitVortex();
             return;
         }
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
-            // screenWidth = event.window.data1;
-            // screenHeight = event.window.data2;
-            // orthoProjection = glm::ortho(0.0f, screenWidth, screenHeight, 0.0f, -1.0f, 1.0f);
-            // glViewport(0, 0, screenWidth, screenHeight); // Update viewport
+        if (event.type == SDL_WINDOWEVENT &&
+            event.window.event == SDL_WINDOWEVENT_RESIZED) {
         }
         if (event.type == SDL_KEYDOWN) {
             if (event.key.keysym.sym == SDLK_ESCAPE) {
@@ -852,6 +1146,28 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.cubeBody.updateDiffuseTexture(usr.cubeBody.diffuseTextureId
     );  // ok it is time to exract shader
     usr.cubeBody.draw();
+
+    glm::mat4 projection = glm::ortho(
+        0.0f,  // Left bound of the screen
+        static_cast<float>(ctx->screenWidth
+        ),  // Right bound, based on screen width
+        static_cast<float>(ctx->screenHeight
+        ),      // Bottom bound, based on screen height
+        0.0f,   // Top bound (top-left origin)
+        -1.0f,  // Near clipping plane
+        1.0f    // Far clipping plane
+    );
+
+    const int textWidth = usr.text.getTextWidth("THIS IS A TEXT", 1.0f);
+    usr.text.renderText(
+        "THIS IS A TEST",                    // Text to render
+        (ctx->screenWidth - textWidth) / 2,  // X position (left offset)
+        10,                                  // Y position (top offset)
+        1.0f,                         // Scale (1.0f for original size)
+        glm::vec3(1.0f, 1.0f, 0.5f),  // Colour (yellowish)
+        usr.text.textShaderId,        // Shader ID for rendering text
+        projection                    // Projection matrix
+    );
 
     usr.hud.updateHudTexture(usr.hud.hudTextureId);
     usr.hud.drawHud();

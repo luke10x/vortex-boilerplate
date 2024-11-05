@@ -7,6 +7,7 @@ all:
 		"import bpy; bpy.ops.export_scene.gltf(filepath='assets/texture-test.glb', export_yup="True")"
 	
 	cp ../assets/sprites/heart.png assets/heart.png
+	cp ../assets/04b03/04B_03__.TTF assets/04b03.ttf
 
 	cd ../.. && make clean build APP_ROOT=$(PWD) CXXFLAGS_EXTRA="${CXXFLAGS_EXTRA}"
 
