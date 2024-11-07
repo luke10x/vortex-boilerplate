@@ -21,6 +21,116 @@
 #include "imgui_impl_sdl2.h"
 #include "stb_truetype.h"
 
+#include <glm/glm.hpp>
+#include <vector>
+#include <cmath>
+#include <limits>
+
+struct PathSegment {
+    std::vector<glm::vec3> points;   // Sampled points along this Catmull-Rom segment
+    std::vector<float> arcLengths;   // Cumulative arc lengths for each sampled point
+    float totalLength = 0.0f;
+};
+
+struct Path {
+    std::vector<PathSegment> segments;
+    float totalLength;
+
+    Path() : totalLength(0.0f) {}
+
+    void addSegment(const PathSegment& segment) {
+        segments.push_back(segment);
+        totalLength += segment.totalLength;
+    }
+
+    glm::vec3 getPointAtDistance(float distance) const {
+        float remainingDist = distance;
+        
+        for (const auto& segment : segments) {
+            if (remainingDist <= segment.totalLength) {
+                // Interpolate within this segment
+                for (size_t i = 1; i < segment.arcLengths.size(); ++i) {
+                    if (remainingDist <= segment.arcLengths[i]) {
+                        float t = (remainingDist - segment.arcLengths[i - 1]) / 
+                                  (segment.arcLengths[i] - segment.arcLengths[i - 1]);
+                        return glm::mix(segment.points[i - 1], segment.points[i], t);
+                    }
+                }
+            }
+            remainingDist -= segment.totalLength;
+        }
+        
+        return segments.back().points.back(); // Return the end point if distance exceeds path length
+    }
+
+    glm::vec3 findClosestPoint(const glm::vec3& point) const {
+        float minDistance = std::numeric_limits<float>::max();
+        glm::vec3 closestPoint;
+
+        for (const auto& segment : segments) {
+            for (const auto& p : segment.points) {
+                float dist = glm::distance(point, p);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestPoint = p;
+                }
+            }
+        }
+        return closestPoint;
+    }
+};
+std::vector<glm::vec3> generateSpiralControlPoints(float radius, float heightPerTurn, int numTurns, int pointsPerTurn) {
+    std::vector<glm::vec3> controlPoints;
+    float angleStep = glm::two_pi<float>() / pointsPerTurn;
+
+    for (int i = 0; i <= numTurns * pointsPerTurn; ++i) {
+        float angle = i * angleStep;
+        float x = radius * cos(angle);
+        float z = radius * sin(angle);
+        float y = i * (heightPerTurn / pointsPerTurn);
+        controlPoints.emplace_back(x, y, z);
+    }
+
+    return controlPoints;
+}
+
+// Function to initialize Path from control points
+Path initializeSpiralPath(float radius, float heightPerTurn, int numTurns, int pointsPerTurn) {
+    Path path;
+    std::vector<glm::vec3> controlPoints = generateSpiralControlPoints(radius, heightPerTurn, numTurns, pointsPerTurn);
+
+    // Construct PathSegments from control points using Catmull-Rom spline interpolation
+    for (size_t i = 1; i < controlPoints.size() - 2; ++i) {
+        PathSegment segment;
+        glm::vec3 p0 = controlPoints[i - 1];
+        glm::vec3 p1 = controlPoints[i];
+        glm::vec3 p2 = controlPoints[i + 1];
+        glm::vec3 p3 = controlPoints[i + 2];
+
+        // Sample points along this Catmull-Rom segment
+        for (float t = 0.0f; t <= 1.0f; t += 0.05f) {
+            glm::vec3 point = 0.5f * ((2.0f * p1) +
+                                      (-p0 + p2) * t +
+                                      (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t * t +
+                                      (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t * t * t);
+            
+            if (!segment.points.empty()) {
+                float arcLength = glm::distance(segment.points.back(), point);
+                segment.arcLengths.push_back(segment.totalLength + arcLength);
+                segment.totalLength += arcLength;
+            } else {
+                segment.arcLengths.push_back(0.0f);
+            }
+            segment.points.push_back(point);
+        }
+
+        // path.totalLength += segment.totalLength;
+        path.addSegment(segment);
+    }
+
+    return path;
+}
+
 struct Line {
     static const char* LINE_VERTEX_SHADER;
     static const char* LINE_FRAGMENT_SHADER;
@@ -31,11 +141,11 @@ struct Line {
     void initLine() {
         float lineVertices[] = {
             // Line 1
-            -10.5f, 10.5f, 0.0f,  // Start point
-            0.5f, 0.5f, 0.0f,  // End point
+            -10.5f, 0.0f, 0.0f,  // Start point
+            0.0f, 0.0f, 0.0f,  // End point
             // Line 2
-            -0.5f, -0.5f, 0.0f,
-            0.5f, -0.5f, 0.0f,
+            0.0f, -10.5f, 0.0f,
+            0.0f, -0.0f, 0.0f,
             // Add more lines as needed
         };
         GLuint VAO, VBO;
@@ -56,7 +166,7 @@ struct Line {
         this->lineShaderId = vtx::createShaderProgram(
             LINE_VERTEX_SHADER, LINE_FRAGMENT_SHADER
         );
-        // glLineWidth(2.0f);
+        // glLineWidth(5.0f);
     }
 
     void renderTheLines(const glm::mat4 view, const glm::mat4 projection, const glm::mat4 model) {
@@ -655,13 +765,15 @@ typedef struct {
     MyMesh cubeBody;
     MyImGui imgui;
     Line redLine;
+    Path spiralPath;
+    Gizmo gizmo;
 } UserContext;
 
 UserContext usr;
 
 // Create the camera matrix
-glm::vec3 cameraPosition(10.0f, 3.0f, 10.0f);
-glm::vec3 targetPosition(1.5f, 1.6f, -1.5f);
+glm::vec3 cameraPosition(30.0f, 15.0f, 30.0f);
+glm::vec3 targetPosition(0.0f, 1.6f, 0.0f);
 glm::vec3 upDirection(0.0f, 1.0f, 0.0f);
 glm::mat4 cameraMatrix = glm::lookAt(
     cameraPosition,
@@ -706,6 +818,26 @@ void vtx::init(vtx::VertexContext* ctx)
     usr.cubeBody.updateProjectionMatrix(projectionMatrix);
 
     usr.redLine.initLine();
+
+    float radius = 3.5f;
+    float heightPerTurn = 4.0f;
+    int numTurns = 3;
+    int pointsPerTurn = 4;
+
+    usr.spiralPath = initializeSpiralPath(radius, heightPerTurn, numTurns, pointsPerTurn);
+
+    // Output the total length of the spiral path
+    std::cout << "Total Length of Spiral Path: " << usr.spiralPath.totalLength << std::endl;
+
+    // Optionally print some sample points along the path
+    for (const auto& segment : usr.spiralPath.segments) {
+        for (const auto& point : segment.points) {
+            // std::cout << "Point: (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
+        }
+    }
+
+    usr.gizmo.init();
+    usr.gizmo.updateProjectionMatrix(projectionMatrix);
 }
 
 void vtx::loop(vtx::VertexContext* ctx)
@@ -760,6 +892,31 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.cubeBody.updateDiffuseTexture(usr.cubeBody.diffuseTextureId
     );  // ok it is time to exract shader
     usr.cubeBody.draw();
+
+    usr.gizmo.updateViewMatrix(cameraMatrix);
+    
+    // THIS IS ALSO IMPORTANT FOR THIS EXAMPLE
+    // TODO make it run too, but it kind of dublicates the visual impact of the next 
+    // code block
+    // for (const auto& seg : usr.spiralPath.segments) {
+    //     for (const auto point : seg.points) {
+
+    //         glm::mat4 gizmoMat = glm::mat4(1.0f); // Start with the identity matrix
+    //         gizmoMat = glm::translate(gizmoMat, point);
+
+    //         usr.gizmo.updateTransformationMatrix(gizmoMat);
+    //         usr.gizmo.draw();
+    //     }
+    // }
+
+    for (float cursor = 0.0f; cursor < usr.spiralPath.totalLength; cursor += 2.3) {
+        const glm::vec3 point = usr.spiralPath.getPointAtDistance(cursor);
+
+            glm::mat4 gizmoMat = glm::mat4(1.0f); // Start with the identity matrix
+            gizmoMat = glm::translate(gizmoMat, point);
+            usr.gizmo.updateTransformationMatrix(gizmoMat);
+            usr.gizmo.draw();
+    }
 
     // Figure projection matrix
     float fov       = glm::radians(45.0f);  // Field of view in radians
