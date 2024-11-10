@@ -7,11 +7,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #define STB_TRUETYPE_IMPLEMENTATION
+#include <cmath>
 #include <fstream>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include "../../src/vtx/ctx.h"
@@ -21,10 +23,214 @@
 #include "imgui_impl_sdl2.h"
 #include "stb_truetype.h"
 
-#include <glm/glm.hpp>
-#include <vector>
-#include <cmath>
-#include <limits>
+struct Confetti {
+    struct ConfettiParticle {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        glm::vec4 color;
+        float life;  // Time until the particle disappears
+    };
+
+    static const char* CONFETTI_VERTEX_SHADER;
+    static const char* CONFETTI_FRAGMENT_SHADER;
+
+    static const int NUM_PARTICLES = 200;
+
+    GLuint confettiShaderId;
+    std::vector<ConfettiParticle> initialParticles;
+    float time;
+    GLuint confettiVAO;
+
+    void initConfetti()
+    {
+        srand(0);
+        float size = 0.3f;
+        for (int i = 0; i < NUM_PARTICLES; i++) {
+            const glm::vec3 velocity(
+                (rand() % 100 - 50) / 50.0f,  // Random X velocity
+                (rand() % 100) / 40.0f,      // Random upward Y velocity
+                (rand() % 100 - 50) / 50.0f  // Random Z velocity
+            );
+            const glm::vec4 color(
+                (rand() / (float) RAND_MAX),
+                (rand() / (float) RAND_MAX),
+                (rand() / (float) RAND_MAX), 1.0f
+            );
+            ConfettiParticle p1 = {
+                .position = glm::vec3(0.0f, 0.0f, 0.0f) +
+                            glm::vec3(-size, -size, 0.0f),
+                .velocity = velocity,
+                .color    = color,
+                .life     = 1.0f
+            };
+            ConfettiParticle p2 = {
+                .position = glm::vec3(0.0f, 0.0f, 0.0f) +
+                            glm::vec3(size, -size, 0.0f),
+                .velocity = velocity,
+                .color    = color,
+                .life     = 1.0f
+            };
+            ConfettiParticle p3 = {
+                .position = glm::vec3(0.0f, 0.0f, 0.0f) +
+                            glm::vec3(0.0f, size, 0.0f),
+                .velocity = velocity,
+                .color    = color,
+                .life     = 1.0f
+            };
+            initialParticles.push_back(p1);
+            initialParticles.push_back(p2);
+            initialParticles.push_back(p3);
+        }
+
+        // Set time to a point where it needs to regenerate
+        this->time = 3.0f;
+
+        this->confettiShaderId = vtx::createShaderProgram(
+            CONFETTI_VERTEX_SHADER, CONFETTI_FRAGMENT_SHADER
+        );
+
+        // Create and bind the VBO
+        glGenVertexArrays(1, &this->confettiVAO);
+        glBindVertexArray(this->confettiVAO);
+
+        GLuint confettiVBO;
+        glGenBuffers(1, &confettiVBO);
+        glBindBuffer(GL_ARRAY_BUFFER, confettiVBO);
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            sizeof(ConfettiParticle) * initialParticles.size(),
+            initialParticles.data(), GL_STATIC_DRAW
+        );
+        // glBufferData(GL_ARRAY_BUFFER, PARTICLE_SIZE *
+        // sizeof(GLfloat), nullptr, GL_DYNAMIC_DRAW);
+        // TODO figure what is the difference between these static and
+        // dynamic and how to use the dynamic
+
+        // clang-format off
+        // index, size, type, normalized, stride, pointer
+        glVertexAttribPointer(0, sizeof(ConfettiParticle::position) / sizeof(float), GL_FLOAT, GL_FALSE, sizeof(ConfettiParticle), (void*) offsetof(ConfettiParticle, position));
+        glVertexAttribPointer(1, sizeof(ConfettiParticle::velocity) / sizeof(float), GL_FLOAT, GL_FALSE, sizeof(ConfettiParticle), (void*) offsetof(ConfettiParticle, velocity));
+        glVertexAttribPointer(2, sizeof(ConfettiParticle::color) / sizeof(float),    GL_FLOAT, GL_FALSE, sizeof(ConfettiParticle), (void*) offsetof(ConfettiParticle, color));
+        glVertexAttribPointer(3, sizeof(ConfettiParticle::life) / sizeof(float),     GL_FLOAT, GL_FALSE, sizeof(ConfettiParticle), (void*) offsetof(ConfettiParticle, life));
+        // clang-format on
+
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
+
+        // Unbind
+        glBindVertexArray(0);                      // VAO
+        glBindBuffer(GL_ARRAY_BUFFER, 0);          // VBO
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);  // EBO
+    }
+    void resetParticles() {
+        std::cerr << "Resetting particles" << std::endl;
+    }
+
+    void drawParticles(
+        float deltaTime,
+        const glm::mat4 viewMatrix,
+        const glm::mat4 projectionMatrix,
+        const glm::mat4 transformationMatrix
+    )
+    {
+        glUseProgram(this->confettiShaderId);
+        glBindVertexArray(this->confettiVAO);
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(
+                this->confettiShaderId, "u_worldToView"
+            ),                          // uniform location
+            1,                          // number of matrices
+            GL_FALSE,                   // transpose
+            glm::value_ptr(viewMatrix)  // value
+        );
+        glUniformMatrix4fv(
+            glGetUniformLocation(
+                this->confettiShaderId, "u_projection"
+            ),                                // uniform location
+            1,                                // number of matrices
+            GL_FALSE,                         // transpose
+            glm::value_ptr(projectionMatrix)  // value
+        );
+
+        glUniformMatrix4fv(
+            glGetUniformLocation(
+                this->confettiShaderId, "u_modelToWorld"
+            ),                                    // uniform location
+            1,                                    // number of matrices
+            GL_FALSE,                             // transpose
+            glm::value_ptr(transformationMatrix)  // value
+        );
+
+        this->time += deltaTime;
+        // Load uniform time variable
+        glUniform1f(
+            glGetUniformLocation(this->confettiShaderId, "u_time"),
+            this->time
+        );
+
+        glDrawArrays(
+            GL_TRIANGLES,  // Mode
+            0,             // Start from
+            this->initialParticles.size()
+        );
+
+        glBindVertexArray(0);
+    }
+};
+
+const char* Confetti::CONFETTI_VERTEX_SHADER =
+#ifdef __EMSCRIPTEN__
+    "#version 300 es"
+#else
+    "#version 330 core"
+#endif
+    R"(
+    precision mediump float;
+
+    uniform float u_time;
+    uniform mat4 u_modelToWorld;
+    uniform mat4 u_worldToView;  // World to View matrix
+    uniform mat4 u_projection;   // Projection matrix
+
+    layout(location = 0) in vec3  a_position;
+    layout(location = 1) in vec3  a_velocity;          
+    layout(location = 2) in vec4  a_color;          
+    layout(location = 3) in float a_life;          
+
+    out vec4 v_color;
+
+    void main() {
+        float delta = mod(u_time, 3.0);
+        vec3 currentVelocity = a_velocity * 2.0 + vec3(0.0, -9.8 * 0.2, 0.0) * delta;
+        vec3 movedPos = a_position + currentVelocity * delta;
+        
+        v_color = a_color;
+        vec3 crntPos = vec3(u_modelToWorld * vec4(movedPos, 1.0f));
+        gl_Position  = u_projection * u_worldToView * vec4(crntPos, 1.0f);
+
+    }
+    )";
+
+const char* Confetti::CONFETTI_FRAGMENT_SHADER =
+#ifdef __EMSCRIPTEN__
+    "#version 300 es"
+#else
+    "#version 330 core"
+#endif
+    R"(
+    precision mediump float;
+
+    in vec4 v_color;
+
+    out vec4 FragColor;
+
+    void main() {
+        FragColor = v_color;
+    }
+    )";
 
 typedef struct {
     struct {
@@ -558,7 +764,20 @@ struct MyImGui {
         }
         ImGui::End();
     }
+
+    void showParticleControls(Confetti& particleSystem)
+    {
+        if (ImGui::Begin(
+                "Particles", nullptr, ImGuiWindowFlags_AlwaysAutoResize
+            )) {
+            if (ImGui::Button("reset")) {
+                particleSystem.resetParticles();
+            }
+        }
+        ImGui::End();
+    }
 };
+
 // == Main program ==
 
 typedef struct {
@@ -567,6 +786,7 @@ typedef struct {
     MyMesh cubeBody;
     MyImGui imgui;
     Gizmo gizmo;
+    Confetti confetti;
 } UserContext;
 
 UserContext usr;
@@ -619,6 +839,7 @@ void vtx::init(vtx::VertexContext* ctx)
 
     usr.gizmo.init();
     usr.gizmo.updateProjectionMatrix(projectionMatrix);
+    usr.confetti.initConfetti();
 }
 
 void vtx::loop(vtx::VertexContext* ctx)
@@ -675,12 +896,29 @@ void vtx::loop(vtx::VertexContext* ctx)
     usr.cubeBody.draw();
 
     usr.gizmo.updateViewMatrix(cameraMatrix);
+    float fov       = glm::radians(45.0f);  // Field of view in radians
+    float nearPlane = 0.1f;    // Distance to the near clipping plane
+    float farPlane  = 100.0f;  // Distance to the far clipping plane
+    // Actually, this needs to be recalculated in the loop,
+    // as window could be resized at any time by user
+    float aspectRatio =
+        (float) ctx->screenWidth / (float) ctx->screenHeight;
+
+    // But, here is the initials perspective matrix
+    glm::mat4 projectionMatrix =
+        glm::perspective(fov, aspectRatio, nearPlane, farPlane);
+
+    usr.confetti.drawParticles(
+        deltaTime, cameraMatrix, projectionMatrix, glm::mat4(1.0)
+    );
 
     usr.imgui.newFrame();
     usr.imgui.showMatrixEditor(
         &modelToWorld, "Model-to-World for mesh"
     );
     usr.imgui.showMatrixEditor(&cameraMatrix, "Camera matrix");
+    usr.imgui.showParticleControls(usr.confetti);
+
     usr.imgui.renderFrame();
 
     checkOpenGLError();
