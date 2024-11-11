@@ -37,13 +37,15 @@ struct Confetti {
     static const int NUM_PARTICLES = 200;
 
     GLuint confettiShaderId;
-    std::vector<ConfettiParticle> initialParticles;
+    std::vector<ConfettiParticle> particleVertices;
     float time;
     GLuint confettiVAO;
+    GLuint confettiVBO;
 
-    void initConfetti()
-    {
-        srand(0);
+    private: void regenerateParticleVertices() {
+        this->particleVertices.clear();
+        static int seed = 0;
+        srand(seed++); 
         float size = 0.3f;
         for (int i = 0; i < NUM_PARTICLES; i++) {
             const glm::vec3 velocity(
@@ -77,10 +79,18 @@ struct Confetti {
                 .color    = color,
                 .life     = 1.0f
             };
-            initialParticles.push_back(p1);
-            initialParticles.push_back(p2);
-            initialParticles.push_back(p3);
+            this->particleVertices.push_back(p1);
+            this->particleVertices.push_back(p2);
+            this->particleVertices.push_back(p3);
         }
+    }
+    // this neeed to be public because i declared previous thing private
+    // won;t be an issue once i moved definitions to be separate from
+    // declarations
+    public:
+    void initConfetti()
+    {
+        this->regenerateParticleVertices();
 
         // Set time to a point where it needs to regenerate
         this->time = 3.0f;
@@ -93,16 +103,20 @@ struct Confetti {
         glGenVertexArrays(1, &this->confettiVAO);
         glBindVertexArray(this->confettiVAO);
 
-        GLuint confettiVBO;
+        // GLuint confettiVBO;
         glGenBuffers(1, &confettiVBO);
         glBindBuffer(GL_ARRAY_BUFFER, confettiVBO);
+        // glBufferData(
+        //     GL_ARRAY_BUFFER,
+        //     sizeof(ConfettiParticle) * particleVertices.size(),
+        //     particleVertices.data(), GL_STATIC_DRAW
+        // );
         glBufferData(
             GL_ARRAY_BUFFER,
-            sizeof(ConfettiParticle) * initialParticles.size(),
-            initialParticles.data(), GL_STATIC_DRAW
+            sizeof(ConfettiParticle) * particleVertices.size(),
+            nullptr,
+            GL_DYNAMIC_DRAW // Could be also static, and regeneration will not happen on every frame
         );
-        // glBufferData(GL_ARRAY_BUFFER, PARTICLE_SIZE *
-        // sizeof(GLfloat), nullptr, GL_DYNAMIC_DRAW);
         // TODO figure what is the difference between these static and
         // dynamic and how to use the dynamic
 
@@ -126,6 +140,24 @@ struct Confetti {
     }
     void resetParticles() {
         std::cerr << "Resetting particles" << std::endl;
+
+        this->regenerateParticleVertices();
+
+        // Bind the VAO and VBO
+        glBindVertexArray(this->confettiVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, confettiVBO);
+
+        // Update the buffer with new particle data
+        glBufferSubData(
+            GL_ARRAY_BUFFER,
+            0,  // Start at the beginning of the buffer
+            sizeof(ConfettiParticle) * particleVertices.size(),
+            particleVertices.data()  // Pointer to the new data
+        );
+
+        // Unbind the buffer after updating
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
     }
 
     void drawParticles(
@@ -174,7 +206,7 @@ struct Confetti {
         glDrawArrays(
             GL_TRIANGLES,  // Mode
             0,             // Start from
-            this->initialParticles.size()
+            this->particleVertices.size()
         );
 
         glBindVertexArray(0);
