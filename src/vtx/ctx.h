@@ -10,19 +10,9 @@
 #include <iostream>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
+
 #endif
-
-// ***********
-//  Constants
-// ***********
-
-// Screen dimensions
-// const int SCREEN_WIDTH  = 400;
-// const int SCREEN_HEIGHT = 300;
-// const int SCREEN_WIDTH  = 854;
-// const int SCREEN_HEIGHT = 480;
-const int SCREEN_HEIGHT  = 854;
-const int SCREEN_WIDTH = 480;
 
 // *******************************
 //  Declarations of all functions
@@ -30,7 +20,7 @@ const int SCREEN_WIDTH = 480;
 
 // 1. OpenGL init subsystem
 
-static bool initVideo();
+static bool initVideo(const int screenWidth, const int screenHeight);
 
 // 2. OpenGL shader subsystem
 namespace vtx {
@@ -50,9 +40,9 @@ static void checkOpenGLError(const char* optionalTag);
 
 static void performOneCycle();
 namespace vtx {
-void openVortex();
+void openVortex(const int screenWidth, const int screenHeight);
 void exitVortex();
-}
+}  // namespace vtx
 
 // **********************
 //  Global state context
@@ -83,7 +73,28 @@ static vtx::VertexContext ctx;
 // **************************
 //  1. OpenGL init subsystem
 // **************************
-bool initVideo()
+#ifdef __EMSCRIPTEN__
+static EM_BOOL on_web_display_size_changed(
+    int event_type,
+    const EmscriptenUiEvent* event,
+    void* user_data
+)
+{
+    int width  = event->windowInnerWidth;
+    int height = event->windowInnerHeight;
+
+    std::cerr << "web rsize callback worked " << width << "x" << height
+              << std::endl;
+    SDL_Event resizeEvent;
+    resizeEvent.type         = SDL_WINDOWEVENT;
+    resizeEvent.window.event = SDL_WINDOWEVENT_RESIZED;
+    resizeEvent.window.data1 = width;
+    resizeEvent.window.data2 = height;
+    SDL_PushEvent(&resizeEvent);
+    return 0;
+}
+#endif
+bool initVideo(const int screenWidth, const int screenHeight)
 {
 #ifdef __USE_SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -111,11 +122,12 @@ bool initVideo()
     SDL_Window* window = SDL_CreateWindow(
         "SDL2 OpenGL Home", SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        SCREEN_WIDTH,   // ignored in fullscreen
-        SCREEN_HEIGHT,  // ignored in fullscreen
-        SDL_WINDOW_OPENGL |
-            SDL_WINDOW_SHOWN  // | SDL_WINDOW_FULLSCREEN_DESKTOP
+        screenWidth,   // ignored in fullscreen
+        screenHeight,  // ignored in fullscreen
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
+            SDL_WINDOW_SHOWN  
     );
+
     if (window == nullptr) {
         std::cerr << "Window could not be created! SDL Error: "
                   << SDL_GetError() << std::endl;
@@ -137,8 +149,16 @@ bool initVideo()
         SDL_Quit();
     }
 
-    std::cerr << " will create swap " << std::endl;
-    SDL_GL_SetSwapInterval(1);  // Use V-Sync
+    // Because we want canvas to take full width and height
+#ifdef __EMSCRIPTEN__
+    emscripten_set_resize_callback(
+        EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 0,
+        on_web_display_size_changed
+    );
+#endif
+
+    // SDL_GL_SetSwapInterval(1);  // Use V-Sync
+     SDL_GL_SetSwapInterval(0);  // Disable V-Sync
 
 #elif defined(__USE_GLFW)
     if (!glfwInit()) {
@@ -181,13 +201,16 @@ bool initVideo()
     int width, height;
 #ifdef __USE_SDL
     SDL_GL_GetDrawableSize(window, &width, &height);
-    ctx.sdlContext = context;
-    ctx.sdlWindow  = window;
-    ctx.screenWidth = width;
-    ctx.screenHeight = height;
+    std::cerr << "Drawable size is " << width << "x" << height << std::endl;
+    ctx.sdlContext   = context;
+    ctx.sdlWindow    = window;
+    if (width == 0 || height == 0) {
+        std::cerr << "do not reset screen dimesions to zero drawable area" << std::endl;
+    } else {
+        ctx.screenWidth  = width;
+        ctx.screenHeight = height;
+    }
 
-    // SDL_SetWindowGrab(window, SDL_TRUE); // Forces the window to capture all input
-    // SDL_SetRelativeMouseMode(SDL_FALSE); // Optional: Controls how the mouse pointer behaves
 #elif defined(__USE_GLFW)
     glfwGetFramebufferSize(window, &width, &height);
     ctx.glfwWindow = window;
@@ -282,7 +305,8 @@ static void checkOpenGLError(const char* optionalTag = "")
 {
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        std::cerr << optionalTag << "OpenGL error: " << err << std::endl;
+        std::cerr << optionalTag << "OpenGL error: " << err
+                  << std::endl;
         exit(1);
     }
 }
@@ -310,11 +334,15 @@ void vtx::exitVortex()
 #endif
 }
 
-void vtx::openVortex()
+void vtx::openVortex(int screenWidth, int screenHeight)
 {
     ctx.shouldContinue = true;
 
-    if (!initVideo()) {
+
+    ctx.screenWidth = screenWidth;
+    ctx.screenHeight = screenHeight;
+
+    if (!initVideo(ctx.screenWidth, ctx.screenHeight)) {
         std::cerr << "Failed to initialize!" << std::endl;
         exitVortex();
         exit(1);

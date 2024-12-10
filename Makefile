@@ -21,7 +21,7 @@ ifeq ($(NATIVE),1)
 	LDLIBS += -lGLEW
 	LDLIBS += -lglfw
 	LDLIBS += -lsdl2
-	OUTPUT = ./build/program
+	OUTPUT ?= ./build/program
 else
 	CXX = em++
 	CXXFLAGS += -I$(HOME)/.emscripten_cache/sysroot/include
@@ -44,7 +44,7 @@ ifneq ($(wildcard $(APP_ROOT)/assets),)
 	LDLIBS += $(shell ls $(APP_ROOT)/assets | sed -e \
 		's|.*|--preload-file $(APP_ROOT)/assets/\0@assets/\0|')
 endif
-	OUTPUT = ./build/index.html
+	OUTPUT ?= ./build/index.html
 endif
 
 # All IMGUI stuff
